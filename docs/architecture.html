@@ -55,6 +55,7 @@
   .rag.opt { stroke-dasharray: 5 3; }
   .llm { fill: var(--warn-soft); stroke: var(--warn); }
   .arrow.rag { stroke: var(--teal); stroke-dasharray: 5 3; }
+  .arrow.ragsolid { stroke: var(--teal); }
   .arrow.llmline { stroke: var(--warn); stroke-dasharray: 5 3; }
   .pill-real { fill: var(--green-soft); stroke: var(--green); }
   .pill-assume { fill: var(--amber-soft); stroke: var(--amber); }
@@ -236,10 +237,11 @@
       <text class="t-label" x="657" y="156">조건이 다 모이면</text>
       <path class="arrow" d="M375,126 L375,178"/>
       <text class="t-label" x="382" y="156">/quote 직접</text>
-      <!-- /rfp: API -> rag_quote (②) -> intake -->
-      <path class="arrow rag" d="M480,112 L500,112 L500,140 L785,140 L785,410 L772,410"/>
-      <path class="arrow rag" d="M785,140 L785,100 L772,100"/>
-      <text class="t-label" x="508" y="158" style="fill:var(--teal)">/rfp: ② 조항 → 세션</text>
+      <!-- /rfp (QUOTE_RAG 와 무관, 항상): ① API -> 견적 RAG(조항 검색·조건 추출) ② -> 대화형 접수(세션 채움) -->
+      <path class="arrow ragsolid" d="M480,112 L500,112 L500,140 L782,140 L782,425 L772,425"/>
+      <text class="t-label" x="508" y="158" style="fill:var(--teal)">/rfp ① 조항 검색</text>
+      <path class="arrow ragsolid" d="M772,395 L792,395 L792,108 L772,108"/>
+      <text class="t-label" x="797" y="164" style="fill:var(--teal)">② 조건 → 세션</text>
       <!-- agent -> layers -->
       <path class="arrow hot" d="M320,320 L150,378"/>
       <path class="arrow hot" d="M380,320 L370,378"/>
@@ -248,7 +250,7 @@
       <path class="arrow" d="M620,490 L620,528"/>
       <path class="arrow llmline" d="M770,470 L800,545"/>
       <text class="t-label" x="764" y="512" style="fill:var(--warn)">③</text>
-      <path class="arrow rag" d="M770,440 L798,440"/>
+      <path class="arrow ragsolid" d="M772,455 L798,455"/>
       <!-- 입력 해석: intake -> LLM (오른쪽 바깥으로 돌아서) -->
       <path class="arrow llmline" d="M770,48 L1070,48 L1070,565 L1062,565"/>
       <text class="t-label" x="900" y="42" style="fill:var(--warn)">입력 해석 (EXTRACTOR=llm)</text>
@@ -257,7 +259,7 @@
     <div class="legend">
       <span class="tag ui">화면</span><span class="tag api">API·검색</span><span class="tag intake">접수</span>
       <span class="tag agent">에이전트</span><span class="tag calc">계산 (숫자의 유일한 출처)</span>
-      <span class="tag rq">견적 RAG (점선 = QUOTE_RAG=1 일 때만)</span><span class="tag llm">LLM (입력 해석 · ③ 문장)</span>
+      <span class="tag rq">견적 RAG — 실선: /rfp 항상 · 점선: QUOTE_RAG=1 일 때만</span><span class="tag llm">LLM (입력 해석 · ③ 문장)</span>
       <span class="tag real">실제</span><span class="tag assume">가정</span><span class="tag mock">가상</span>
     </div>
   </section>
