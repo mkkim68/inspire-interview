@@ -31,6 +31,14 @@
   .bad { border-left: 4px solid #b3261e; }
   .review { background:#fff4e5; border:1px solid #f0c27b; border-radius:8px; padding:10px 12px; margin: 8px 0 12px; }
   .review ul { margin: 6px 0 0; padding-left: 18px; }
+  .log { height: 260px; overflow-y: auto; display:flex; flex-direction:column; gap:8px; padding: 4px 0 8px; }
+  .msg { max-width: 85%; padding: 8px 12px; border-radius: 12px; white-space: pre-wrap; line-height: 1.45; }
+  .msg.bot { background:#f1f1f3; align-self:flex-start; }
+  .msg.me { background: var(--accent); color:#fff; align-self:flex-end; }
+  .chatform { display:flex; gap:8px; margin-top: 8px; }
+  .chatform input { flex:1; padding:10px; border:1px solid var(--line); border-radius:6px; font-size:15px; }
+  .chatform button { margin-top:0; }
+  details { margin-bottom: 16px; }
   h3 { font-size: 15px; margin: 16px 0 4px; }
   a { color: var(--accent); }
   .option { border:1px solid var(--line); border-radius:8px; padding:12px; margin:8px 0; }
@@ -43,6 +51,13 @@
   <h1>대학 연구행정 PI 견적 에이전트</h1>
   <p class="sub">대학명·교수 수·연구자 수·기간·범위를 입력하면 근거 검색 → 공수 산정 → 일정 판단 → (가격 또는 대안) → 서울대 사례 비교 순서로 견적을 만듭니다.</p>
 
+  <section>
+    <h2>대화로 견적 받기</h2>
+    <div id="log" class="log"></div>
+    <div id="slots" class="muted"></div>
+    <form id="chatform" class="chatform"><input id="msg" type="text" placeholder="조건을 자유롭게 입력하세요" autocomplete="off"><button type="submit">보내기</button></form>
+  </section>
+  <details><summary class="muted">또는 직접 입력</summary>
   <form id="f">
     <label for="university">대학명</label>
     <input id="university" type="text" placeholder="예: 고려대학교">
@@ -69,6 +84,7 @@
       <button type="button" data-demo='["고려대학교",100,500,1]'>고려대 100명·1개월</button>
     </div>
   </form>
+  </details>
 
   <div id="out"></div>
 </main>
@@ -120,6 +136,11 @@ $("f").addEventListener("submit", async e => {
   out.innerHTML = '<section class="muted">견적 작성 중…</section>';
   const res = await (await fetch("/quote", {method: "POST", headers: {"content-type": "application/json"},
                                             body: JSON.stringify(body)})).json();
+  renderResult(res, body);
+});
+
+function renderResult(res, body) {
+  const out = $("out");
   if (res.status === "needs_info" || res.status === "error") {
     out.innerHTML = `<section><h2>${res.status === "needs_info" ? "추가 정보가 필요합니다" : "오류"}</h2>
       <ul>${res.questions.map(q => `<li>${esc(q)}</li>`).join("")}</ul></section>`;
@@ -158,6 +179,32 @@ $("f").addEventListener("submit", async e => {
     <section><h2>에이전트 처리 기록</h2>
       <ol class="trace">${res.trace.map(t => `<li><code>${esc(t.tool)}</code> — ${esc(t.summary)}</li>`).join("")}</ol>
     </section>`;
+}
+
+// --- 대화형 접수 ---
+const SID = "s" + Math.random().toString(36).slice(2);
+function bubble(who, text) {
+  const d = document.createElement("div");
+  d.className = "msg " + who;
+  d.textContent = text;
+  $("log").appendChild(d);
+  $("log").scrollTop = $("log").scrollHeight;
+}
+bubble("bot", "안녕하세요. 견적을 원하시는 대학과 조건을 편하게 말씀해 주세요.\n예: \"고려대인데 교수 100명, 연구자 500명이고 연구비 관리랑 로드맵만 두 달 안에 해주세요. 주 1회 보고도 필요해요\"");
+$("chatform").addEventListener("submit", async e => {
+  e.preventDefault();
+  const msg = $("msg").value.trim();
+  if (!msg) return;
+  bubble("me", msg);
+  $("msg").value = "";
+  const res = await (await fetch("/chat", {method: "POST", headers: {"content-type": "application/json"},
+                                           body: JSON.stringify({session_id: SID, message: msg})})).json();
+  bubble("bot", res.reply);
+  const sl = res.slots;
+  $("slots").textContent = `대학 ${sl.university || "?"} · 교수 ${sl.professors ?? "?"} · 연구자 ${sl.researchers ?? "(미입력)"} · 기간 ${sl.months ?? "?"}개월 · 범위 ${sl.scopes.join(", ") || "?"}`
+    + (res.unhandled.length ? ` · 반영 안 된 조건: ${res.unhandled.join(" / ")}` : "");
+  if (res.result) renderResult(res.result, sl);
+  else if (res.status === "reset") $("out").innerHTML = "";
 });
 </script>
 </body>

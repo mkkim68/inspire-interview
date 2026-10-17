@@ -5,7 +5,7 @@ import re
 from dataclasses import dataclass, field
 
 from .agent import run_agent
-from .quote import SCOPES, QuoteRequest, validate
+from .quote import MODULES, SCOPES, QuoteRequest, validate
 
 # '최대 8명'의 '최대'처럼 '대'로 끝나지만 대학이 아닌 말
 NOT_UNIV = {"최대", "확대", "기대", "상대", "시대", "절대", "반대", "현대", "극대", "증대", "연대", "세대"}
@@ -73,6 +73,22 @@ class ChatSession:
                             researchers=s["researchers"], months=s["months"], scopes=list(s["scopes"]))
 
 
+def summary(slots: dict) -> str:
+    """지금까지 받은 조건을 사람이 읽는 문장으로."""
+    parts = []
+    if slots["university"]:
+        parts.append(slots["university"])
+    if slots["professors"] is not None:
+        parts.append(f"교수 {slots['professors']:,}명")
+    if slots["researchers"] is not None:
+        parts.append(f"연구자 {slots['researchers']:,}명")
+    if slots["months"] is not None:
+        parts.append(f"{slots['months']}개월")
+    if slots["scopes"]:
+        parts.append("범위 " + "·".join(MODULES[s][0] for s in slots["scopes"]))
+    return ", ".join(parts)
+
+
 def _won(n: int) -> str:
     return f"{n:,}원"
 
@@ -87,7 +103,7 @@ def reply(session: ChatSession, message: str, store, embedder) -> dict:
     req = session.request()
     questions = validate(req)
     if questions:
-        got = ", ".join(f"{k}={v}" for k, v in session.slots.items() if v not in (None, []))
+        got = summary(session.slots)
         text = "견적을 내려면 아래 정보가 더 필요해요.\n" + "\n".join(f"- {q}" for q in questions)
         if got:
             text += f"\n(지금까지 받은 조건: {got})"
