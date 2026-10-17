@@ -122,10 +122,10 @@
     <p>채팅·RFP로 조건을 받아 공수·일정·금액을 계산하고, 실제 입찰 사례·유사 사례(검색)와 비교해 근거가 부족하면 담당자 검토를 요구하는 서비스</p>
     <div class="stats">
       <div class="stat"><b>10</b><span>에이전트 도구 (RAG 2개 포함)</span></div>
-      <div class="stat"><b>81</b><span>테스트 (DB·키 없이 통과)</span></div>
+      <div class="stat"><b>82</b><span>테스트 (DB·키 없이 통과)</span></div>
       <div class="stat"><b>8건</b><span>실제 대학 입찰공고 사례</span></div>
       <div class="stat"><b>30건</b><span>가상 사례 (+ RFP 3 · 제안서 문단 6)</span></div>
-      <div class="stat"><b>~1,490</b><span>Python 라인 (app/)</span></div>
+      <div class="stat"><b>~1,500</b><span>Python 라인 (app/)</span></div>
       <div class="stat"><b>2곳</b><span>LLM 사용처: 입력 해석 · ③ 문장 (계산 X)</span></div>
     </div>
   </header>
@@ -340,7 +340,7 @@
       <div class="rq-card">
         <h3>② RFP 조항</h3>
         <dl>
-          <dt>무엇을 검색</dt><dd>RFP를 <code>##</code> 조항 단위로 적재 → 사업 개요·사업기간·사업예산·과업 범위·기타 요구사항을 조항별 검색 top-1</dd>
+          <dt>무엇을 검색</dt><dd>RFP를 <code>##</code> 조항 단위로 적재(긴 조항은 500자 조각 + 조항 제목) → 사업 개요·사업기간·사업예산·과업 범위·기타 요구사항을 조항별 검색 top-1</dd>
           <dt>결과가 어디에</dt><dd>찾은 조항만 <code>intake.extract</code> 에 넣어 조건 추출 → <code>POST /rfp</code> 가 채팅 세션을 채우고 견적까지</dd>
           <dt>숫자는 누가</dt><dd>기간·예산·교수 수는 정규식 추출 → <code>quote.py</code> 계산</dd>
         </dl>
@@ -348,7 +348,7 @@
       <div class="rq-card">
         <h3>③ 과업 수행 내용</h3>
         <dl>
-          <dt>무엇을 검색</dt><dd>범위별로 과거 제안서 문단 (<code>kind=mock_proposal</code>, 6문단) top-1</dd>
+          <dt>무엇을 검색</dt><dd>범위별로 과거 제안서 문단 (<code>kind=mock_proposal</code>, 6문단, RFP와 같은 조항 청킹) top-1</dd>
           <dt>결과가 어디에</dt><dd>LLM이 [n] 인용 붙여 문단 작성 (<code>rag.build_prompt</code> + <code>check_citations</code>). 키 없으면 첫 문장 발췌</dd>
           <dt>숫자는 누가</dt><dd>프롬프트로 "숫자 쓰지 말 것" 지시. 금액은 견적 표에서만</dd>
         </dl>
@@ -358,6 +358,18 @@
       <b>실제 실행 (Claude, <code>LLM_MODEL=claude-sonnet-4-6</code>)</b> — 누리대 가상 RFP → 조항 5개 검색 → Claude가 과업 수행 내용 작성, 인용 [1][2][3] 검증 통과 ·
       유사 사례 중앙값 <b>481,692,157원</b> 대비 공식 금액 <b>−62%</b> → ±25% 밖이므로 <b>검토 필요</b>.
     </div>
+
+    <h3 style="margin:20px 0 2px;font-size:15px">청킹 — 무엇을 한 덩어리로 검색하나</h3>
+    <p class="lead" style="margin:0 0 6px">검색 단위를 의미 단위(조항·사례)에 맞추되, 임베딩 모델 e5의 입력 한계(<b>512토큰 ≈ 한국어 700~800자</b>)를 넘지 않게 자릅니다.</p>
+    <div class="scroll">
+    <table>
+      <tr><th>대상</th><th>자르는 방법</th><th>크기</th><th>이유</th></tr>
+      <tr><td>사내 문서 · 견적 근거 문서</td><td>재귀 분할 (문단 → 줄 → 문장), 청크마다 문서 제목 접두</td><td><code>CHUNK_SIZE</code> 200</td><td>템플릿 방식 그대로</td></tr>
+      <tr><td>가상 사례 30건</td><td>사례 1건 = 청크 1개 (사업명 · 유형 · 과업 범위)</td><td>자르지 않음</td><td>사례 단위로 찾고, 금액은 <code>case_id</code> 로 정형 데이터에서 조회</td></tr>
+      <tr><td>RFP 조항 · 제안서 문단</td><td><code>##</code> 조항 단위 → 길면 조항 안에서 재귀 분할, <b>조각마다 조항 제목</b> 접두 (<code>make_chunks</code> 재사용)</td><td><code>SECTION_MAX</code> 500</td><td>기간·예산 조항이 섞이지 않게, 인용 [n] 이 범위 하나를 가리키게, e5 한계 안에서 끝 문장까지 검색</td></tr>
+    </table>
+    </div>
+    <p class="lead" style="margin:6px 0 0">ID는 <code>문서#조항#조각</code> (예: <code>rfp_garam#3#0</code>) — RRF가 <code>chunk_id</code> 로 합치므로 조항끼리 덮어쓰지 않게. 이전 구현(<code>10_000</code>, 첫 조각만 저장)은 긴 조항의 뒷부분을 버리고 e5가 앞부분만 읽는 문제가 있어 수정 (테스트: 1,000자 조항 → 여러 조각·제목·끝 문장 보존).</p>
 
     <h3 style="margin:20px 0 2px;font-size:15px">유사 사례 검색 품질 (<code>scripts/eval_cases.py</code>, e5, 질의 8개)</h3>
     <p class="lead" style="margin:0 0 4px">질의는 사례와 다른 표현으로 작성. 정답 = 요청 범위와 사례 범위 자카드 ≥ 0.5. 표본이 작고 정답 라벨도 가상 데이터 기준.</p>
@@ -389,7 +401,7 @@
       <tr><td><span class="tag agent">에이전트</span></td><td><code>app/agent.py</code></td><td class="num">235</td><td>도구 10개, <code>RulePlanner(use_rag)</code>, 루프·trace, 견적서 렌더</td><td><code>run_agent</code> <code>RulePlanner.next_action</code></td></tr>
       <tr><td><span class="tag calc">계산</span></td><td><code>app/quote.py</code></td><td class="num">152</td><td>공수·일정·할증·금액·대안·예산 맞추기 (Decimal)</td><td><code>estimate</code> <code>schedule</code> <code>fit_budget</code></td></tr>
       <tr><td><span class="tag calc">근거</span></td><td><code>app/calibration.py</code></td><td class="num">138</td><td>실제 사례 로드·그룹, 검토 판단, 계수 보정·LOO</td><td><code>evidence</code> <code>calibrate</code> <code>loo_mape</code></td></tr>
-      <tr><td><span class="tag rq">견적 RAG</span></td><td><code>app/rag_quote.py</code></td><td class="num">123</td><td>① 유사 사례·범위·교차검증 ② RFP 조항 검색 ③ 인용 붙은 과업 수행 내용</td><td><code>retrieve_similar_cases</code> <code>rfp_conditions</code> <code>draft_narrative</code></td></tr>
+      <tr><td><span class="tag rq">견적 RAG</span></td><td><code>app/rag_quote.py</code></td><td class="num">127</td><td>조항 청킹(제목 접두·500자) ① 유사 사례·범위·교차검증 ② RFP 조항 검색 ③ 인용 붙은 과업 수행 내용</td><td><code>retrieve_similar_cases</code> <code>rfp_conditions</code> <code>draft_narrative</code></td></tr>
       <tr><td><span class="tag rag">RAG</span></td><td><code>retrieval.py</code> <code>store.py</code> <code>embeddings.py</code> <code>chunking.py</code></td><td class="num">286</td><td>하이브리드 검색, pgvector/메모리 저장소, e5·가짜 임베딩, 청킹</td><td><code>hybrid_search</code> <code>rrf_fuse</code></td></tr>
       <tr><td><span class="tag rag">RAG</span></td><td><code>rag.py</code> <code>llm.py</code> <code>config.py</code></td><td class="num">118</td><td>프롬프트·인용 검증, LLM 래퍼(anthropic/openai/ollama/none), .env (<code>QUOTE_RAG</code>, <code>EXTRACTOR</code>)</td><td><code>generate</code> <code>check_citations</code></td></tr>
       <tr><td><span class="tag api">스크립트</span></td><td><code>scripts/eval_cases.py</code> <code>make_mock_cases.py</code></td><td class="num">100</td><td>유사 사례 검색 Recall@K·MRR, 가상 사례 30건 생성</td><td><code>jaccard</code></td></tr>
@@ -412,10 +424,10 @@
       <tr><td><b>sentence-transformers</b> · multilingual-e5-small</td><td class="num">6.1.0</td><td><code>embeddings.py</code></td><td>한국어 지원, 384차원으로 노트북에서 빠름. <code>query:</code>/<code>passage:</code> 접두어 규칙 준수</td></tr>
       <tr><td><b>NumPy</b></td><td class="num">2.5.4</td><td><code>calibration.py</code> <code>store.py</code></td><td>최소제곱(<code>lstsq</code>)으로 공수 계수 보정, 메모리 저장소 벡터 연산</td></tr>
       <tr><td><b>decimal</b> · <b>statistics</b> (표준)</td><td class="num">—</td><td><code>quote.py</code> <code>rag_quote.py</code></td><td>금액 부동소수 오차 제거 (978,890,000÷1.1 이 889,899,999원 되던 버그), 사례 중앙값</td></tr>
-      <tr><td><b>re</b> (표준)</td><td class="num">—</td><td><code>intake.py</code> <code>rag_quote.py</code></td><td>키 없이 동작하는 조건 추출 ("두 달", "1억 5천"), RFP <code>##</code> 조항 분할</td></tr>
+      <tr><td><b>re</b> (표준)</td><td class="num">—</td><td><code>intake.py</code> <code>rag_quote.py</code></td><td>키 없이 동작하는 조건 추출 ("두 달", "1억 5천"), RFP·제안서 <code>##</code> 조항 분할</td></tr>
       <tr><td><b>anthropic</b> SDK</td><td class="num">1.13.0</td><td><code>llm.py</code></td><td><span class="tag on">사용</span> 입력 해석(<code>messages.parse</code> 구조화 출력) · ③ 과업 수행 내용 문장 (Claude). SDK 1.x 는 <code>temperature</code> 미지원이라 제거</td></tr>
       <tr><td><b>httpx</b></td><td class="num">0.28.1</td><td><code>llm.py</code> · <code>tests/</code></td><td>Ollama 로컬 모델 호출(키 불필요, <code>/api/generate</code>) · FastAPI TestClient</td></tr>
-      <tr><td><b>pytest</b></td><td class="num">9.1.1</td><td><code>tests/</code></td><td>FakeEmbedder·MemoryStore·LLM_PROVIDER=none·QUOTE_RAG=0·EXTRACTOR=regex 로 DB·네트워크·키 없이 81개 실행 (LLM 해석은 가짜 응답 주입)</td></tr>
+      <tr><td><b>pytest</b></td><td class="num">9.1.1</td><td><code>tests/</code></td><td>FakeEmbedder·MemoryStore·LLM_PROVIDER=none·QUOTE_RAG=0·EXTRACTOR=regex 로 DB·네트워크·키 없이 82개 실행 (LLM 해석은 가짜 응답 주입)</td></tr>
       <tr><td><b>spec-kit</b> (specify CLI)</td><td class="num">1.2.2.dev0</td><td><code>.specify/</code> <code>specs/</code></td><td>SDD: constitution → spec → plan → tasks → implement, 설계 변경은 spec Amendment 로 기록</td></tr>
       <tr><td><b>openai</b> SDK</td><td class="num">3.31.0</td><td><code>llm.py</code></td><td><span class="tag off">미사용</span> 공급자 교체 지점으로만 남겨 둠</td></tr>
     </table>
@@ -463,13 +475,13 @@
       </div>
     </div>
 
-    <h3 style="margin:20px 0 4px;font-size:15px">테스트 분포 (총 81개)</h3>
+    <h3 style="margin:20px 0 4px;font-size:15px">테스트 분포 (총 82개)</h3>
     <div class="bars">
       <div class="bar"><span>test_quote.py</span><div class="track"><div class="fill" style="width:100%"></div></div><span class="n">25</span></div>
       <div class="bar"><span>test_chat.py</span><div class="track"><div class="fill" style="width:60%"></div></div><span class="n">15</span></div>
       <div class="bar"><span>test_calibration.py</span><div class="track"><div class="fill" style="width:44%"></div></div><span class="n">11</span></div>
       <div class="bar"><span>test_understand.py</span><div class="track"><div class="fill" style="width:36%;background:var(--warn)"></div></div><span class="n">9</span></div>
-      <div class="bar"><span>test_rag_quote.py</span><div class="track"><div class="fill" style="width:32%;background:var(--teal)"></div></div><span class="n">8</span></div>
+      <div class="bar"><span>test_rag_quote.py</span><div class="track"><div class="fill" style="width:36%;background:var(--teal)"></div></div><span class="n">9</span></div>
       <div class="bar"><span>test_api.py (템플릿)</span><div class="track"><div class="fill" style="width:32%"></div></div><span class="n">8</span></div>
       <div class="bar"><span>test_core.py (템플릿)</span><div class="track"><div class="fill" style="width:20%"></div></div><span class="n">5</span></div>
     </div>
