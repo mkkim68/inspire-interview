@@ -1,0 +1,34 @@
+# 실행:  docker compose up -d db          (DB만: 추천 — API는 conda 환경에서 직접 실행)
+#        docker compose --profile api up -d   (DB + API 컨테이너까지)
+# 확인:  docker compose ps   /  종료: docker compose down   (데이터까지 삭제: down -v)
+services:
+  db:
+    image: pgvector/pgvector:pg16
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: pw
+      POSTGRES_DB: rag
+    ports:
+      - "55432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d rag"]
+      interval: 3s
+      timeout: 3s
+      retries: 20
+
+  api:
+    profiles: ["api"] # 기본으로는 안 뜸. 맥에선 컨테이너 안 PyTorch가 CPU만 써서 느림
+    build: .
+    env_file: .env
+    environment:
+      DATABASE_URL: postgresql://postgres:pw@db:5432/rag
+    ports:
+      - "8000:8000"
+    depends_on:
+      db:
+        condition: service_healthy
+
+volumes:
+  pgdata:
