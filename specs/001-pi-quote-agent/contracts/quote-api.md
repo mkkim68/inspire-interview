@@ -17,7 +17,7 @@ Response 200 — 완료
     "factor": 1.0, "rate": 10600000, "subtotal": 106000000, "vat": 10600000, "total": 116600000
   },
   "quote_markdown": "# 견적서 — 고려대학교 ...",
-  "sources": ["modules.md", "rate_card.md", "snu_pi_case.md"],
+  "sources": [{"source": "modules.md", "chunk_id": "modules.md#0"}],
   "trace": [{"step": 1, "tool": "search_refs", "summary": "..."}, {"step": 2, "tool": "estimate", "summary": "..."},
             {"step": 3, "tool": "render_quote", "summary": "..."}]
 }

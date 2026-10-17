@@ -3,12 +3,15 @@ from functools import lru_cache
 from pathlib import Path
 
 from fastapi import FastAPI, HTTPException
+from fastapi.responses import HTMLResponse
 from pydantic import BaseModel, Field
 
 from . import rag
+from .agent import run_agent
 from .chunking import make_chunks
 from .config import settings
 from .embeddings import get_embedder
+from .quote import QuoteRequest
 from .retrieval import hybrid_search
 from .store import MemoryStore, PgVectorStore
 
@@ -79,6 +82,22 @@ def search(req: SearchReq):
 def ask(req: SearchReq):
     docs = hybrid_search(get_store(), get_embedder(), req.query, req.k, req.where, req.mode, min_rel_score=req.min_rel_score)
     return {**rag.answer(req.query, docs), "retrieved": docs}
+
+
+class QuoteReq(BaseModel):
+    university: str = ""
+    researchers: int | None = None
+    scopes: list[str] = Field(default_factory=list)
+
+
+@app.post("/quote")
+def quote(req: QuoteReq):
+    return run_agent(QuoteRequest(**req.model_dump()), get_store(), get_embedder())
+
+
+@app.get("/", response_class=HTMLResponse)
+def index():
+    return (Path(__file__).parent / "static" / "index.html").read_text(encoding="utf-8")
 
 
 @app.delete("/reset")

@@ -1,0 +1,96 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>PI 견적 에이전트</title>
+<style>
+  :root { --fg:#1d1d1f; --muted:#6b6b70; --line:#e3e3e6; --bg:#fafafa; --card:#fff; --accent:#d9632b; }
+  * { box-sizing: border-box; }
+  body { margin:0; font-family: system-ui, -apple-system, "Apple SD Gothic Neo", sans-serif; color:var(--fg); background:var(--bg); }
+  main { max-width: 860px; margin: 0 auto; padding: 32px 16px; }
+  h1 { font-size: 22px; margin: 0 0 4px; }
+  p.sub { color: var(--muted); margin: 0 0 24px; }
+  form, section { background: var(--card); border:1px solid var(--line); border-radius: 10px; padding: 20px; margin-bottom: 16px; }
+  label { display:block; font-weight:600; margin: 12px 0 6px; }
+  input[type=text], input[type=number] { width:100%; padding:8px 10px; border:1px solid var(--line); border-radius:6px; font-size:15px; }
+  .scopes label { display:inline-flex; gap:6px; font-weight:400; margin: 4px 16px 4px 0; }
+  button { margin-top:16px; background: var(--accent); color:#fff; border:0; border-radius:6px; padding:10px 18px; font-size:15px; cursor:pointer; }
+  table { width:100%; border-collapse: collapse; margin: 12px 0; font-variant-numeric: tabular-nums; }
+  th, td { border-bottom:1px solid var(--line); padding:8px 6px; text-align:left; }
+  td.num, th.num { text-align:right; }
+  .total { font-size: 18px; font-weight: 700; }
+  .muted { color: var(--muted); font-size: 13px; }
+  .warn { color: #b3261e; }
+  ol.trace li { margin: 4px 0; }
+  code { background:#f1f1f3; padding: 1px 4px; border-radius: 4px; }
+</style>
+</head>
+<body>
+<main>
+  <h1>대학 연구행정 PI 견적 에이전트</h1>
+  <p class="sub">대학명·연구자 수·과업 범위를 입력하면 근거 검색 → 계산 → 견적서 작성 순서로 견적을 만듭니다.</p>
+
+  <form id="f">
+    <label for="university">대학명</label>
+    <input id="university" type="text" placeholder="예: 고려대학교">
+    <label for="researchers">연구자 수</label>
+    <input id="researchers" type="number" min="1" placeholder="예: 2000">
+    <label>과업 범위 (공통 과업: 현황 분석·To-Be 설계·사업관리는 항상 포함)</label>
+    <div class="scopes">
+      <label><input type="checkbox" value="planning"> 연구기획</label>
+      <label><input type="checkbox" value="award"> 과제수주</label>
+      <label><input type="checkbox" value="funding"> 연구비 관리</label>
+      <label><input type="checkbox" value="outcome"> 성과 활용</label>
+      <label><input type="checkbox" value="roadmap"> 차세대 시스템 구축 방향·실행 로드맵</label>
+    </div>
+    <button type="submit">견적 받기</button>
+  </form>
+
+  <div id="out"></div>
+</main>
+<script>
+const won = n => n.toLocaleString("ko-KR") + "원";
+const esc = s => String(s).replace(/[&<>"]/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
+
+document.getElementById("f").addEventListener("submit", async e => {
+  e.preventDefault();
+  const r = document.getElementById("researchers").value;
+  const body = {
+    university: document.getElementById("university").value,
+    researchers: r === "" ? null : Number(r),
+    scopes: [...document.querySelectorAll(".scopes input:checked")].map(i => i.value),
+  };
+  const out = document.getElementById("out");
+  out.innerHTML = '<section class="muted">견적 작성 중…</section>';
+  const res = await (await fetch("/quote", {method: "POST", headers: {"content-type": "application/json"},
+                                            body: JSON.stringify(body)})).json();
+  if (res.status !== "ok") {
+    out.innerHTML = `<section><h2>${res.status === "needs_info" ? "추가 정보가 필요합니다" : "오류"}</h2>
+      <ul>${res.questions.map(q => `<li>${esc(q)}</li>`).join("")}</ul></section>`;
+    return;
+  }
+  const q = res.quote;
+  const sources = [...new Set(res.sources.map(s => s.source))];
+  out.innerHTML = `
+    <section>
+      <h2>견적서 — ${esc(body.university)}</h2>
+      <div class="muted">연구자 ${body.researchers.toLocaleString("ko-KR")}명 · 규모 계수 ${q.factor} · 혼합 단가 ${won(q.rate)}/MM</div>
+      <table>
+        <tr><th>과업</th><th class="num">공수(MM)</th><th class="num">금액</th><th>출처</th></tr>
+        ${q.items.map(i => `<tr><td>${esc(i.name)}</td><td class="num">${i.mm}</td><td class="num">${won(i.amount)}</td><td>${esc(i.source)}</td></tr>`).join("")}
+        <tr><td colspan="2">소계</td><td class="num">${won(q.subtotal)}</td><td></td></tr>
+        <tr><td colspan="2">부가세 (10%)</td><td class="num">${won(q.vat)}</td><td></td></tr>
+        <tr class="total"><td colspan="2">합계</td><td class="num">${won(q.total)}</td><td></td></tr>
+      </table>
+      <div class="muted">${sources.length ? "근거 문서: " + sources.map(esc).join(", ") : '<span class="warn">검색된 근거 문서가 없습니다.</span>'}</div>
+      <div class="muted">※ 단가·공수는 샘플 가정값이며 실제 계약 금액이 아닙니다.</div>
+    </section>
+    <section>
+      <h2>에이전트 처리 기록</h2>
+      <ol class="trace">${res.trace.map(t => `<li><code>${esc(t.tool)}</code> — ${esc(t.summary)}</li>`).join("")}</ol>
+    </section>`;
+});
+</script>
+</body>
+</html>
