@@ -32,15 +32,15 @@
 
 **Independent Test**: sources ⊆ data/quote 파일, trace 순서 = search_refs → estimate → render_quote
 
-- [ ] T011 [US2] 테스트: sources 실재, 항목별 source, trace 순서, "샘플 가정값" 문구, 상수 ↔ md 숫자 일치 in tests/test_quote.py
-- [ ] T012 [US2] 부족한 부분 보완 (항목 source, 견적서 하단 안내·출처 표시) in app/agent.py
+- [X] T011 [US2] 테스트: sources 실재, 항목별 source, trace 순서, "샘플 가정값" 문구, 상수 ↔ md 숫자 일치 in tests/test_quote.py
+- [X] T012 [US2] 부족한 부분 보완 (항목 source, 견적서 하단 안내·출처 표시) in app/agent.py
 
 ## Phase 5: User Story 3 — 정보 부족 시 되묻기 (P3)
 
 **Independent Test**: scopes=[] → status needs_info + 범위 질문
 
-- [ ] T013 [US3] 테스트: 범위 누락, 대학명+연구자 수 누락(질문 2개), 연구자 수 0, 지원하지 않는 범위, max_steps 초과 시 error in tests/test_quote.py
-- [ ] T014 [US3] run_agent 에서 validate 실패 시 needs_info 반환, 화면에 질문 표시 in app/agent.py, app/static/index.html
+- [X] T013 [US3] 테스트: 범위 누락, 대학명+연구자 수 누락(질문 2개), 연구자 수 0, 지원하지 않는 범위, max_steps 초과 시 error in tests/test_quote.py
+- [X] T014 [US3] run_agent 에서 validate 실패 시 needs_info 반환, 화면에 질문 표시 in app/agent.py, app/static/index.html
 
 ## Phase 6: Polish
 
