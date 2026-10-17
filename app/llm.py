@@ -5,12 +5,13 @@ import re
 from .config import settings
 
 
-def generate(prompt: str, max_tokens: int = 700) -> str:
+def generate(prompt: str, max_tokens: int = 2000) -> str:
     provider = settings.llm_provider
     if provider == "anthropic" and os.getenv("ANTHROPIC_API_KEY"):
         import anthropic
         client = anthropic.Anthropic()
-        msg = client.messages.create(model=settings.llm_model, max_tokens=max_tokens, temperature=0,
+        # anthropic SDK 1.x / 최신 모델은 temperature 등 샘플링 파라미터를 받지 않는다
+        msg = client.messages.create(model=settings.llm_model, max_tokens=max_tokens,
                                      messages=[{"role": "user", "content": prompt}])
         return "".join(b.text for b in msg.content if b.type == "text")
     if provider == "openai" and os.getenv("OPENAI_API_KEY"):

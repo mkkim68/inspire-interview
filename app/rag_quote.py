@@ -51,11 +51,12 @@ def case_query(req: QuoteRequest) -> str:
     return "연구행정 과업 범위: " + ", ".join(MODULES[s][0] for s in req.scopes)
 
 
-def retrieve_similar_cases(req: QuoteRequest, store, embedder, k: int = 5, mode: str = "hybrid") -> list[dict]:
+def retrieve_similar_cases(req: QuoteRequest, store, embedder, k: int = 5, mode: str = "hybrid",
+                           query: str | None = None) -> list[dict]:
     """검색은 '어떤 사례가 비슷한가'만 정하고, 금액·기간은 정형 데이터(cases.jsonl)에서 가져온다."""
     ensure_mock_loaded(store, embedder)
     by_id = {c["case_id"]: c for c in load_mock_cases()}
-    hits = hybrid_search(store, embedder, case_query(req), k, where=CASE_FILTER, mode=mode)
+    hits = hybrid_search(store, embedder, query or case_query(req), k, where=CASE_FILTER, mode=mode)
     return [{**by_id[h["meta"]["case_id"]], "score": h["score"]} for h in hits]
 
 
