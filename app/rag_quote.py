@@ -28,11 +28,15 @@ def load_mock_cases() -> list[dict]:
     return [json.loads(line) for line in (MOCK_DIR / "cases.jsonl").read_text(encoding="utf-8").splitlines() if line]
 
 
+SECTION_MAX = 500   # e5 입력 한계 512토큰 안에 들어오도록 (한국어 약 700~800자에서 잘림)
+
+
 def _sections(text: str, source: str, meta: dict) -> list[dict]:
-    """'## ' 제목 단위로 자른다 (조항 하나 = 청크 하나)."""
+    """'## ' 조항 단위로 자르고, 긴 조항은 조항 안에서 다시 나눈다.
+    조항 제목을 '# 제목' 으로 바꿔 넘기면 make_chunks 가 조각마다 제목을 붙인다.
+    source 에 조항 번호를 넣어 chunk_id 가 '문서#조항#조각' 으로 고유해진다 (RRF 덮어쓰기 방지)."""
     parts = [p.strip() for p in re.split(r"\n(?=## )", text) if p.strip().startswith("## ")]
-    # 조항마다 chunk_id 가 달라야 RRF(chunk_id 로 합침)에서 서로 덮어쓰지 않는다
-    return [{**make_chunks(p, source, 10_000, meta)[0], "chunk_id": f"{source}#{j}"} for j, p in enumerate(parts)]
+    return [c for j, p in enumerate(parts) for c in make_chunks(p[1:], f"{source}#{j}", SECTION_MAX, meta)]
 
 
 def _add(store, embedder, chunks: list[dict]) -> int:
