@@ -1,0 +1,343 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>견적 에이전트 아키텍처</title>
+<style>
+  :root {
+    --bg:#f7f7f8; --card:#ffffff; --fg:#1b1b1f; --muted:#6a6a73; --line:#e2e2e7;
+    --accent:#d9632b; --accent-soft:#fbe9df; --blue:#2f6fde; --blue-soft:#e6eefc;
+    --green:#1f8a5b; --green-soft:#e1f3ea; --violet:#7a4fd0; --violet-soft:#efe8fb;
+    --gray-soft:#f0f0f3; --warn:#b3261e; --warn-soft:#fdecea;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --bg:#141416; --card:#1d1d21; --fg:#ececf1; --muted:#9a9aa5; --line:#2e2e35;
+      --accent:#f08a54; --accent-soft:#3a2418; --blue:#78a4f5; --blue-soft:#1b2639;
+      --green:#5cc595; --green-soft:#16302a; --violet:#b292f2; --violet-soft:#281f3b;
+      --gray-soft:#26262c; --warn:#f2867d; --warn-soft:#3a1d1b;
+    }
+  }
+  * { box-sizing: border-box; }
+  body { margin:0; background:var(--bg); color:var(--fg);
+         font-family: system-ui, -apple-system, "Apple SD Gothic Neo", "Noto Sans KR", sans-serif; line-height:1.55; }
+  main { max-width: 1120px; margin: 0 auto; padding: 32px 20px 64px; }
+  header h1 { font-size: 28px; margin: 0 0 6px; letter-spacing:-0.01em; }
+  header p { margin: 0; color: var(--muted); }
+  .stats { display:grid; grid-template-columns: repeat(auto-fit, minmax(150px,1fr)); gap:10px; margin: 20px 0 8px; }
+  .stat { background:var(--card); border:1px solid var(--line); border-radius:10px; padding:12px 14px; }
+  .stat b { display:block; font-size:22px; font-variant-numeric: tabular-nums; }
+  .stat span { color:var(--muted); font-size:13px; }
+  section { background:var(--card); border:1px solid var(--line); border-radius:12px; padding:22px; margin-top:18px; }
+  h2 { font-size:19px; margin:0 0 4px; }
+  h2 .num { color:var(--accent); margin-right:6px; }
+  .lead { color:var(--muted); margin:0 0 16px; font-size:14px; }
+  svg { width:100%; height:auto; display:block; }
+  svg text { font-family: inherit; fill: var(--fg); }
+  .box { stroke: var(--line); stroke-width:1.5; }
+  .ui { fill: var(--blue-soft); stroke: var(--blue); }
+  .api { fill: var(--gray-soft); stroke: var(--muted); }
+  .intake { fill: var(--violet-soft); stroke: var(--violet); }
+  .agent { fill: var(--accent-soft); stroke: var(--accent); }
+  .calc { fill: var(--green-soft); stroke: var(--green); }
+  .data { fill: var(--card); stroke: var(--muted); stroke-dasharray: 4 3; }
+  .arrow { stroke: var(--muted); stroke-width:1.6; fill:none; marker-end:url(#ah); }
+  .arrow.hot { stroke: var(--accent); }
+  .t-title { font-weight:700; font-size:14px; }
+  .t-sub { font-size:12px; fill: var(--muted); }
+  .t-mono { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size:11.5px; }
+  .t-label { font-size:11.5px; fill: var(--muted); }
+  table { width:100%; border-collapse: collapse; font-size:14px; }
+  th, td { text-align:left; padding:9px 8px; border-bottom:1px solid var(--line); vertical-align: top; }
+  th { color:var(--muted); font-weight:600; font-size:12.5px; }
+  td.num { text-align:right; font-variant-numeric: tabular-nums; white-space:nowrap; }
+  code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size:12.5px; background:var(--gray-soft); padding:1px 5px; border-radius:4px; }
+  .tag { display:inline-block; font-size:11.5px; padding:1px 8px; border-radius:999px; margin-right:4px; white-space:nowrap; }
+  .tag.ui { background:var(--blue-soft); color:var(--blue); }
+  .tag.api { background:var(--gray-soft); color:var(--muted); }
+  .tag.intake { background:var(--violet-soft); color:var(--violet); }
+  .tag.agent { background:var(--accent-soft); color:var(--accent); }
+  .tag.calc { background:var(--green-soft); color:var(--green); }
+  .tag.rag { background:var(--gray-soft); color:var(--fg); }
+  .tag.off { background:var(--warn-soft); color:var(--warn); }
+  .grid2 { display:grid; grid-template-columns: repeat(auto-fit, minmax(300px,1fr)); gap:14px; }
+  .point { border:1px solid var(--line); border-radius:10px; padding:14px 16px; }
+  .point h3 { margin:0 0 6px; font-size:15px; }
+  .point p, .point ul { margin:0; font-size:14px; }
+  .point ul { padding-left:18px; }
+  .bars { display:grid; gap:8px; margin-top:6px; }
+  .bar { display:grid; grid-template-columns: 150px 1fr 40px; align-items:center; gap:10px; font-size:13px; }
+  .bar .track { background:var(--gray-soft); border-radius:6px; height:14px; overflow:hidden; }
+  .bar .fill { background:var(--accent); height:100%; border-radius:6px; }
+  .bar .n { text-align:right; font-variant-numeric: tabular-nums; }
+  .legend { display:flex; flex-wrap:wrap; gap:6px; margin: 10px 0 0; }
+  .scroll { overflow-x:auto; }
+  footer { color:var(--muted); font-size:12.5px; margin-top:24px; }
+  @media (max-width: 640px) { main { padding: 20px 16px 48px; } .bar { grid-template-columns: 110px 1fr 32px; } }
+</style>
+</head>
+<body>
+<main>
+  <header>
+    <h1>대학 연구행정 PI 견적 에이전트 — 아키텍처</h1>
+    <p>채팅으로 조건을 받아 공수·일정·금액을 계산하고, 실제 입찰 사례와 비교해 근거가 부족하면 담당자 검토를 요구하는 서비스</p>
+    <div class="stats">
+      <div class="stat"><b>8</b><span>에이전트 도구</span></div>
+      <div class="stat"><b>64</b><span>테스트 (DB·키 없이 통과)</span></div>
+      <div class="stat"><b>8건</b><span>실제 대학 입찰공고 사례</span></div>
+      <div class="stat"><b>~1,100</b><span>Python 라인 (app/)</span></div>
+      <div class="stat"><b>0</b><span>LLM 호출 (오프라인 동작)</span></div>
+    </div>
+  </header>
+
+  <!-- 1. 요청 흐름 -->
+  <section>
+    <h2><span class="num">1</span>요청 흐름</h2>
+    <p class="lead">입구(채팅·폼) → 접수 → 에이전트 루프 → 계산 모듈. <b>숫자는 초록색 계산 계층에서만</b> 만들어집니다.</p>
+    <div class="scroll">
+    <svg viewBox="0 0 1060 470" role="img" aria-label="요청 흐름 다이어그램">
+      <defs>
+        <marker id="ah" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+          <path d="M0,0 L10,5 L0,10 z" fill="currentColor" style="color:var(--muted)"/>
+        </marker>
+      </defs>
+
+      <!-- UI -->
+      <rect class="box ui" x="20" y="30" width="190" height="96" rx="10"/>
+      <text class="t-title" x="36" y="56">화면</text>
+      <text class="t-mono" x="36" y="78">app/static/index.html</text>
+      <text class="t-sub" x="36" y="98">채팅창 + 직접 입력 폼</text>
+      <text class="t-sub" x="36" y="114">견적·대안·근거·trace 렌더</text>
+
+      <!-- API -->
+      <rect class="box api" x="270" y="30" width="190" height="96" rx="10"/>
+      <text class="t-title" x="286" y="56">API · FastAPI</text>
+      <text class="t-mono" x="286" y="78">app/main.py</text>
+      <text class="t-sub" x="286" y="98">POST /chat · POST /quote</text>
+      <text class="t-sub" x="286" y="114">Pydantic 요청 검증</text>
+
+      <!-- Intake -->
+      <rect class="box intake" x="520" y="30" width="230" height="96" rx="10"/>
+      <text class="t-title" x="536" y="56">대화형 접수</text>
+      <text class="t-mono" x="536" y="78">app/intake.py</text>
+      <text class="t-sub" x="536" y="98">extract() 규칙 기반 조건 추출</text>
+      <text class="t-sub" x="536" y="114">세션 누적 · 되묻기 · 예산 · 미반영 조건</text>
+
+      <!-- Agent -->
+      <rect class="box agent" x="270" y="180" width="480" height="120" rx="10"/>
+      <text class="t-title" x="286" y="206">에이전트 루프</text>
+      <text class="t-mono" x="286" y="226">app/agent.py · run_agent(req, planner, max_steps=10)</text>
+      <text class="t-sub" x="286" y="248">RulePlanner.next_action(state) → 도구 실행 → trace 기록 → 반복</text>
+      <text class="t-sub" x="286" y="268">search_refs · estimate_effort · check_schedule · price · propose_options</text>
+      <text class="t-sub" x="286" y="286">compare_case · check_evidence · render_quote</text>
+
+      <!-- Calc -->
+      <rect class="box calc" x="20" y="350" width="250" height="96" rx="10"/>
+      <text class="t-title" x="36" y="376">견적 계산 (순수 함수)</text>
+      <text class="t-mono" x="36" y="398">app/quote.py</text>
+      <text class="t-sub" x="36" y="418">effort · schedule · estimate</text>
+      <text class="t-sub" x="36" y="434">propose_options · fit_budget · Decimal</text>
+
+      <rect class="box calc" x="300" y="350" width="230" height="96" rx="10"/>
+      <text class="t-title" x="316" y="376">근거 · 보정</text>
+      <text class="t-mono" x="316" y="398">app/calibration.py</text>
+      <text class="t-sub" x="316" y="418">사례 그룹 · 검토 필요 판단</text>
+      <text class="t-sub" x="316" y="434">최소제곱 + LOO 백테스트 (NumPy)</text>
+
+      <rect class="box api" x="560" y="350" width="230" height="96" rx="10"/>
+      <text class="t-title" x="576" y="376">검색 · 저장 (RAG 템플릿)</text>
+      <text class="t-mono" x="576" y="398">retrieval · store · embeddings</text>
+      <text class="t-sub" x="576" y="418">하이브리드(벡터+키워드, RRF)</text>
+      <text class="t-sub" x="576" y="434">pgvector / MemoryStore · e5</text>
+
+      <!-- Data -->
+      <rect class="box data" x="820" y="180" width="220" height="266" rx="10"/>
+      <text class="t-title" x="836" y="206">데이터 data/quote/</text>
+      <text class="t-mono" x="836" y="232">cases.csv</text>
+      <text class="t-sub" x="836" y="250">실제 입찰공고 8건 · 출처 URL</text>
+      <text class="t-mono" x="836" y="282">rate_card.md</text>
+      <text class="t-sub" x="836" y="300">단가 (샘플 가정값)</text>
+      <text class="t-mono" x="836" y="332">modules.md</text>
+      <text class="t-sub" x="836" y="350">공수 계수·할증 규칙 (가정값)</text>
+      <text class="t-mono" x="836" y="382">snu_pi_case.md</text>
+      <text class="t-sub" x="836" y="400">서울대 사례 + 기준 조건</text>
+      <text class="t-label" x="836" y="430">문서 ↔ 코드 상수 일치는 테스트로 검사</text>
+
+      <!-- arrows -->
+      <path class="arrow" d="M210,78 L268,78"/>
+      <path class="arrow" d="M460,78 L518,78"/>
+      <path class="arrow hot" d="M635,126 L635,178"/>
+      <text class="t-label" x="642" y="156">조건이 다 모이면</text>
+      <path class="arrow" d="M365,126 L365,178"/>
+      <text class="t-label" x="372" y="156">/quote 직접</text>
+      <path class="arrow hot" d="M330,300 L170,348"/>
+      <path class="arrow hot" d="M440,300 L420,348"/>
+      <path class="arrow" d="M640,300 L670,348"/>
+      <path class="arrow" d="M530,398 L558,398"/>
+      <path class="arrow" d="M790,398 L818,398"/>
+      <path class="arrow" d="M750,240 L818,240"/>
+    </svg>
+    </div>
+    <div class="legend">
+      <span class="tag ui">화면</span><span class="tag api">API·검색</span><span class="tag intake">접수</span>
+      <span class="tag agent">에이전트</span><span class="tag calc">계산 (숫자의 유일한 출처)</span>
+    </div>
+  </section>
+
+  <!-- 2. 에이전트 루프 -->
+  <section>
+    <h2><span class="num">2</span>에이전트 루프 — 상태 기반 분기</h2>
+    <p class="lead">플래너는 "상태에 아직 없는 것"을 보고 다음 도구를 고릅니다. 일정 판단 결과에 따라 경로가 갈립니다.</p>
+    <div class="scroll">
+    <svg viewBox="0 0 1060 230" role="img" aria-label="에이전트 상태 분기 다이어그램">
+      <g>
+        <rect class="box api" x="10" y="80" width="110" height="56" rx="8"/>
+        <text class="t-mono" x="22" y="104">validate</text><text class="t-sub" x="22" y="122">누락→되묻기</text>
+
+        <rect class="box agent" x="140" y="80" width="110" height="56" rx="8"/>
+        <text class="t-mono" x="152" y="104">search_refs</text><text class="t-sub" x="152" y="122">근거 검색</text>
+
+        <rect class="box calc" x="270" y="80" width="126" height="56" rx="8"/>
+        <text class="t-mono" x="282" y="104">estimate_effort</text><text class="t-sub" x="282" y="122">공수 MM</text>
+
+        <rect class="box calc" x="410" y="80" width="120" height="56" rx="8"/>
+        <text class="t-mono" x="422" y="104">check_schedule</text><text class="t-sub" x="422" y="122">인원·할증</text>
+
+        <rect class="box calc" x="570" y="14" width="130" height="56" rx="8"/>
+        <text class="t-mono" x="582" y="38">price</text><text class="t-sub" x="582" y="56">가능: 금액·VAT</text>
+
+        <rect class="box calc" x="570" y="150" width="130" height="56" rx="8"/>
+        <text class="t-mono" x="582" y="174">propose_options</text><text class="t-sub" x="582" y="192">불가: 대안 A·B</text>
+
+        <rect class="box agent" x="730" y="80" width="110" height="56" rx="8"/>
+        <text class="t-mono" x="742" y="104">compare_case</text><text class="t-sub" x="742" y="122">설명용 비교</text>
+
+        <rect class="box agent" x="860" y="14" width="124" height="56" rx="8"/>
+        <text class="t-mono" x="872" y="38">check_evidence</text><text class="t-sub" x="872" y="56">검토 필요?</text>
+
+        <rect class="box ui" x="860" y="150" width="110" height="56" rx="8"/>
+        <text class="t-mono" x="872" y="174">render_quote</text><text class="t-sub" x="872" y="192">견적서</text>
+      </g>
+      <path class="arrow" d="M120,108 L138,108"/>
+      <path class="arrow" d="M250,108 L268,108"/>
+      <path class="arrow" d="M390,108 L408,108"/>
+      <path class="arrow hot" d="M530,100 L568,50"/><text class="t-label" x="512" y="70">≤ 8명</text>
+      <path class="arrow hot" d="M530,116 L568,170"/><text class="t-label" x="512" y="160">&gt; 8명</text>
+      <path class="arrow" d="M700,44 L728,96"/>
+      <path class="arrow" d="M700,178 L728,122"/>
+      <path class="arrow" d="M840,100 L858,52"/>
+      <path class="arrow" d="M915,70 L915,148"/>
+      <text class="t-label" x="980" y="110">→ ok /</text>
+      <text class="t-label" x="980" y="126">infeasible</text>
+    </svg>
+    </div>
+  </section>
+
+  <!-- 3. 계층별 파일 -->
+  <section>
+    <h2><span class="num">3</span>계층별 파일</h2>
+    <p class="lead">견적 기능은 RAG 템플릿 위에 4개 파일(intake·agent·quote·calibration)을 더한 구조입니다.</p>
+    <div class="scroll">
+    <table>
+      <tr><th>계층</th><th>파일</th><th class="num">라인</th><th>역할</th><th>핵심 함수</th></tr>
+      <tr><td><span class="tag ui">화면</span></td><td><code>app/static/index.html</code></td><td class="num">211</td><td>채팅창, 직접 입력 폼, 견적·대안·근거·trace 표시 (바닐라 JS)</td><td><code>renderResult</code> <code>evidenceSection</code></td></tr>
+      <tr><td><span class="tag api">API</span></td><td><code>app/main.py</code></td><td class="num">123</td><td>엔드포인트, 요청 모델, 메모리 세션</td><td><code>/chat</code> <code>/quote</code> <code>/ask</code></td></tr>
+      <tr><td><span class="tag intake">접수</span></td><td><code>app/intake.py</code></td><td class="num">164</td><td>자연어 → 조건 슬롯, 되묻기, 예산, 미반영 조건</td><td><code>extract</code> <code>parse_budget</code> <code>reply</code></td></tr>
+      <tr><td><span class="tag agent">에이전트</span></td><td><code>app/agent.py</code></td><td class="num">190</td><td>도구 8개, RulePlanner, 루프·trace, 견적서 렌더</td><td><code>run_agent</code> <code>RulePlanner.next_action</code></td></tr>
+      <tr><td><span class="tag calc">계산</span></td><td><code>app/quote.py</code></td><td class="num">152</td><td>공수·일정·할증·금액·대안·예산 맞추기 (Decimal)</td><td><code>estimate</code> <code>schedule</code> <code>fit_budget</code></td></tr>
+      <tr><td><span class="tag calc">근거</span></td><td><code>app/calibration.py</code></td><td class="num">138</td><td>실제 사례 로드·그룹, 검토 판단, 계수 보정·LOO</td><td><code>evidence</code> <code>calibrate</code> <code>loo_mape</code></td></tr>
+      <tr><td><span class="tag rag">RAG</span></td><td><code>retrieval.py</code> <code>store.py</code> <code>embeddings.py</code> <code>chunking.py</code></td><td class="num">286</td><td>하이브리드 검색, pgvector/메모리 저장소, e5·가짜 임베딩, 청킹</td><td><code>hybrid_search</code> <code>rrf_fuse</code></td></tr>
+      <tr><td><span class="tag rag">RAG</span></td><td><code>rag.py</code> <code>llm.py</code> <code>config.py</code></td><td class="num">106</td><td>프롬프트·인용 검증, LLM 래퍼(none/anthropic/openai), .env</td><td><code>generate</code> <code>check_citations</code></td></tr>
+    </table>
+    </div>
+  </section>
+
+  <!-- 4. 프레임워크·라이브러리 -->
+  <section>
+    <h2><span class="num">4</span>프레임워크 · 라이브러리</h2>
+    <p class="lead">conda <code>interview</code> 환경 기준 버전. 신규 의존성 없이 템플릿 의존성만 사용했습니다.</p>
+    <div class="scroll">
+    <table>
+      <tr><th>라이브러리</th><th class="num">버전</th><th>어디에</th><th>왜</th></tr>
+      <tr><td><b>FastAPI</b></td><td class="num">0.143.0</td><td><code>main.py</code></td><td>타입 힌트로 요청 검증·OpenAPI 문서(<code>/docs</code>) 자동 생성. 엔드포인트 추가가 가벼움</td></tr>
+      <tr><td><b>Pydantic</b></td><td class="num">2.14.1</td><td><code>QuoteReq</code> <code>ChatReq</code></td><td>잘못된 타입은 API 입구에서 422로 차단. 도메인 검증(교수 수 ≥ 1 등)은 <code>validate()</code>가 질문으로 변환</td></tr>
+      <tr><td><b>Uvicorn</b></td><td class="num">0.54.0</td><td>실행</td><td>ASGI 서버, <code>--reload</code> 로 개발 속도</td></tr>
+      <tr><td><b>PostgreSQL + pgvector</b></td><td class="num">pg16 · 0.5.1</td><td><code>store.py</code> (Docker)</td><td>벡터·메타데이터(<code>kind=quote_ref</code>)·전문검색을 DB 하나로. 테스트는 <code>MemoryStore</code> 로 대체</td></tr>
+      <tr><td><b>psycopg</b></td><td class="num">3.3.6</td><td><code>PgVectorStore</code></td><td>Postgres 드라이버</td></tr>
+      <tr><td><b>sentence-transformers</b> · multilingual-e5-small</td><td class="num">6.1.0</td><td><code>embeddings.py</code></td><td>한국어 지원, 384차원으로 노트북에서 빠름. <code>query:</code>/<code>passage:</code> 접두어 규칙 준수</td></tr>
+      <tr><td><b>NumPy</b></td><td class="num">2.5.4</td><td><code>calibration.py</code> <code>store.py</code></td><td>최소제곱(<code>lstsq</code>)으로 공수 계수 보정, 메모리 저장소 벡터 연산</td></tr>
+      <tr><td><b>decimal</b> (표준)</td><td class="num">—</td><td><code>quote.py</code> <code>calibration.py</code></td><td>금액 계산의 부동소수 오차 제거 (실제로 978,890,000÷1.1 이 889,899,999원 되던 버그를 잡음)</td></tr>
+      <tr><td><b>re</b> (표준)</td><td class="num">—</td><td><code>intake.py</code></td><td>키 없이 동작하는 규칙 기반 조건 추출 ("두 달", "8주", "1억 5천", "고려대")</td></tr>
+      <tr><td><b>pytest</b> + httpx(TestClient)</td><td class="num">9.1.1 · 0.28.1</td><td><code>tests/</code></td><td>FakeEmbedder·MemoryStore·LLM_PROVIDER=none 으로 DB·네트워크·키 없이 64개 실행</td></tr>
+      <tr><td><b>spec-kit</b> (specify CLI)</td><td class="num">1.2.2.dev0</td><td><code>.specify/</code> <code>specs/</code></td><td>SDD: constitution → spec → plan → tasks → implement, 설계 변경은 spec Amendment 로 기록</td></tr>
+      <tr><td><b>anthropic</b> · <b>openai</b> SDK</td><td class="num">1.13.0 · 3.31.0</td><td><code>llm.py</code></td><td><span class="tag off">미사용</span> 키가 없어 호출 0회. 교체 지점에 연결 예정</td></tr>
+    </table>
+    </div>
+  </section>
+
+  <!-- 5. 분석 포인트 -->
+  <section>
+    <h2><span class="num">5</span>분석 포인트</h2>
+    <div class="grid2">
+      <div class="point">
+        <h3>숫자는 어디서 만들어지나</h3>
+        <ul>
+          <li>금액·공수·할증·VAT는 <code>quote.py</code> 순수 함수에서만</li>
+          <li>렌더러·검색·LLM은 숫자를 만들지 않음 → 견적서 숫자 = <code>estimate()</code> 결과를 테스트로 고정</li>
+          <li>문서(<code>modules.md</code>)와 코드 상수가 다르면 테스트 실패</li>
+        </ul>
+      </div>
+      <div class="point">
+        <h3>LLM 교체 지점 2곳</h3>
+        <ul>
+          <li><code>RulePlanner.next_action(state)</code> → LLM tool-use 플래너</li>
+          <li><code>intake.extract(text)</code> → LLM 조건 추출 (구조화만)</li>
+          <li>두 곳 모두 금액 계산과 분리되어 있어 바꿔도 숫자는 그대로</li>
+        </ul>
+      </div>
+      <div class="point">
+        <h3>실제 데이터 vs 가정값</h3>
+        <ul>
+          <li><b>실제</b>: <code>cases.csv</code> 입찰공고 8건 (약식 0.27~0.9억 / 전사 4.5~8.9억), KOSA 2026 임금</li>
+          <li><b>가정</b>: 단가표, 공수 계수, 할증률, 최대 8명, 서울대 기준 조건</li>
+          <li>교수 수 확인 사례 1건 → 계수 보정 불가 → 모든 견적 <code>review.required</code></li>
+        </ul>
+      </div>
+      <div class="point">
+        <h3>하이브리드 검색의 현재 역할</h3>
+        <ul>
+          <li>템플릿 재사용. 지금은 근거 문서 출처 표시용, 금액에 영향 없음</li>
+          <li>필요해지는 시점: RFP 업로드(정확한 문구·숫자), 사례 수백 건 유사 검색(ISP/ISMP 약어), 공고번호 조회</li>
+          <li>한국어 조사 문제(Postgres <code>simple</code>) → 측정 후 n-gram 도입</li>
+        </ul>
+      </div>
+    </div>
+
+    <h3 style="margin:20px 0 4px;font-size:15px">테스트 분포 (총 64개)</h3>
+    <div class="bars">
+      <div class="bar"><span>test_quote.py</span><div class="track"><div class="fill" style="width:100%"></div></div><span class="n">25</span></div>
+      <div class="bar"><span>test_chat.py</span><div class="track"><div class="fill" style="width:60%"></div></div><span class="n">15</span></div>
+      <div class="bar"><span>test_calibration.py</span><div class="track"><div class="fill" style="width:44%"></div></div><span class="n">11</span></div>
+      <div class="bar"><span>test_api.py (템플릿)</span><div class="track"><div class="fill" style="width:32%"></div></div><span class="n">8</span></div>
+      <div class="bar"><span>test_core.py (템플릿)</span><div class="track"><div class="fill" style="width:20%"></div></div><span class="n">5</span></div>
+    </div>
+  </section>
+
+  <!-- 6. 한계 -->
+  <section>
+    <h2><span class="num">6</span>한계와 다음 단계</h2>
+    <table>
+      <tr><th>한계</th><th>다음 단계</th></tr>
+      <tr><td>공수 계수가 가정값 (교수 수 확인 사례 1건)</td><td>대학알리미 전임교원 수 확보 → <code>calibrate()</code> 로 보정, LOO 오차로 확신도 판단</td></tr>
+      <tr><td>공고 예산 ≠ 낙찰 금액, 재가공 사이트 값</td><td>나라장터 원문 대조, 낙찰 결과 수집</td></tr>
+      <tr><td>규칙 기반 추출, 범위 정정 미지원</td><td><code>extract()</code> 를 LLM 구조화 추출로 교체</td></tr>
+      <tr><td>예산 대안이 최적해 아님 (카탈로그 순)</td><td>범위 조합 탐색(모듈 5개 → 31가지)으로 예산 내 최대 범위</td></tr>
+      <tr><td>세션이 메모리에만 존재</td><td>견적 저장·이력, 담당자 승인 워크플로</td></tr>
+    </table>
+  </section>
+
+  <footer>저장소: github.com/mkkim68/inspire-interview · 해결 과정: docs/PROCESS.md · 설계: specs/001-pi-quote-agent/</footer>
+</main>
+</body>
+</html>

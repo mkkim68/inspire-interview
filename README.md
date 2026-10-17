@@ -4,6 +4,7 @@
 담당자가 채팅으로 조건을 말하면 조건을 모으고, 부족하면 되묻고, 공수·일정·금액을 계산하고, **근거가 부족하면 스스로 "담당자 검토 필요"를 표시**해요.
 
 > 📄 **해결 과정 기록: [`docs/PROCESS.md`](docs/PROCESS.md)** — 가짜 데이터로 뼈대 → 피드백 → 실제 입찰 데이터 → 대화형 창구까지 설계가 바뀐 이유와 과정
+> 🗺 아키텍처 한 장: [`docs/architecture.html`](docs/architecture.html) — 요청 흐름·에이전트 분기·파일·라이브러리·분석 포인트
 > 📐 설계 문서(spec-kit): [`specs/001-pi-quote-agent/`](specs/001-pi-quote-agent/) — constitution → spec → plan → tasks
 
 ## 실행
