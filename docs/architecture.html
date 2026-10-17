@@ -122,18 +122,18 @@
     <p>채팅·RFP로 조건을 받아 공수·일정·금액을 계산하고, 실제 입찰 사례·유사 사례(검색)와 비교해 근거가 부족하면 담당자 검토를 요구하는 서비스</p>
     <div class="stats">
       <div class="stat"><b>10</b><span>에이전트 도구 (RAG 2개 포함)</span></div>
-      <div class="stat"><b>72</b><span>테스트 (DB·키 없이 통과)</span></div>
+      <div class="stat"><b>81</b><span>테스트 (DB·키 없이 통과)</span></div>
       <div class="stat"><b>8건</b><span>실제 대학 입찰공고 사례</span></div>
       <div class="stat"><b>30건</b><span>가상 사례 (+ RFP 3 · 제안서 문단 6)</span></div>
-      <div class="stat"><b>~1,360</b><span>Python 라인 (app/)</span></div>
-      <div class="stat"><b>③만</b><span>LLM 사용처: 과업 수행 내용 문장</span></div>
+      <div class="stat"><b>~1,490</b><span>Python 라인 (app/)</span></div>
+      <div class="stat"><b>2곳</b><span>LLM 사용처: 입력 해석 · ③ 문장 (계산 X)</span></div>
     </div>
   </header>
 
   <!-- 1. 요청 흐름 -->
   <section>
     <h2><span class="num">1</span>요청 흐름</h2>
-    <p class="lead">입구(채팅·폼·RFP) → 접수 → 에이전트 루프 → 계산·근거·RAG. <b>숫자는 초록색 계산 계층에서만</b> 만들어지고, LLM은 ③ 문장 작성에만 연결됩니다.</p>
+    <p class="lead">입구(채팅·폼·RFP) → 접수 → 에이전트 루프 → 계산·근거·RAG. <b>숫자는 초록색 계산 계층에서만</b> 만들어지고, LLM은 <b>입력 해석</b>(원문 근거 검증)과 <b>③ 문장 작성</b>에만 연결됩니다.</p>
     <div class="scroll">
     <svg viewBox="0 0 1080 620" role="img" aria-label="요청 흐름 다이어그램">
       <defs>
@@ -158,10 +158,10 @@
 
       <!-- Intake -->
       <rect class="box intake" x="530" y="30" width="240" height="96" rx="10"/>
-      <text class="t-title" x="546" y="56">대화형 접수</text>
-      <text class="t-mono" x="546" y="78">app/intake.py</text>
-      <text class="t-sub" x="546" y="98">extract() 규칙 기반 조건 추출</text>
-      <text class="t-sub" x="546" y="114">세션 누적 · 되묻기 · 예산</text>
+      <text class="t-title" x="546" y="56">대화형 접수 · 해석</text>
+      <text class="t-mono" x="546" y="78">intake.py · understand.py</text>
+      <text class="t-sub" x="546" y="98">LLM 해석 → 원문 구절·숫자 검증</text>
+      <text class="t-sub" x="546" y="114">실패 시 정규식 · 정정 · 되묻기</text>
 
       <!-- Agent -->
       <rect class="box agent" x="270" y="180" width="500" height="140" rx="10"/>
@@ -202,8 +202,8 @@
       <!-- LLM -->
       <rect class="box llm" x="800" y="530" width="260" height="70" rx="10"/>
       <text class="t-title" x="816" y="554">LLM · app/llm.py</text>
-      <text class="t-sub" x="816" y="574">Claude / Ollama / none(발췌)</text>
-      <text class="t-sub" x="816" y="591">③ 문장만 · 숫자 생성 안 함</text>
+      <text class="t-sub" x="816" y="574">Claude / Ollama / none · 계산 안 함</text>
+      <text class="t-sub" x="816" y="591">해석(EXTRACTOR=llm) · ③ 문장</text>
 
       <!-- Data -->
       <rect class="box data" x="800" y="180" width="260" height="310" rx="10"/>
@@ -249,12 +249,15 @@
       <path class="arrow llmline" d="M770,470 L800,545"/>
       <text class="t-label" x="764" y="512" style="fill:var(--warn)">③</text>
       <path class="arrow rag" d="M770,440 L798,440"/>
+      <!-- 입력 해석: intake -> LLM (오른쪽 바깥으로 돌아서) -->
+      <path class="arrow llmline" d="M770,48 L1070,48 L1070,565 L1062,565"/>
+      <text class="t-label" x="900" y="42" style="fill:var(--warn)">입력 해석 (EXTRACTOR=llm)</text>
     </svg>
     </div>
     <div class="legend">
       <span class="tag ui">화면</span><span class="tag api">API·검색</span><span class="tag intake">접수</span>
       <span class="tag agent">에이전트</span><span class="tag calc">계산 (숫자의 유일한 출처)</span>
-      <span class="tag rq">견적 RAG (점선 = QUOTE_RAG=1 일 때만)</span><span class="tag llm">LLM (③ 문장만)</span>
+      <span class="tag rq">견적 RAG (점선 = QUOTE_RAG=1 일 때만)</span><span class="tag llm">LLM (입력 해석 · ③ 문장)</span>
       <span class="tag real">실제</span><span class="tag assume">가정</span><span class="tag mock">가상</span>
     </div>
   </section>
@@ -375,19 +378,20 @@
   <!-- 4. 계층별 파일 -->
   <section>
     <h2><span class="num">4</span>계층별 파일</h2>
-    <p class="lead">견적 기능은 RAG 템플릿 위에 5개 파일(intake·agent·quote·calibration·rag_quote)을 더한 구조입니다.</p>
+    <p class="lead">견적 기능은 RAG 템플릿 위에 6개 파일(intake·understand·agent·quote·calibration·rag_quote)을 더한 구조입니다.</p>
     <div class="scroll">
     <table>
       <tr><th>계층</th><th>파일</th><th class="num">라인</th><th>역할</th><th>핵심 함수</th></tr>
       <tr><td><span class="tag ui">화면</span></td><td><code>app/static/index.html</code></td><td class="num">252</td><td>채팅창, 직접 입력 폼, 가상 RFP 버튼, 견적·대안·근거·유사 사례·과업 수행 내용·trace 표시</td><td><code>renderResult</code> <code>evidenceSection</code></td></tr>
       <tr><td><span class="tag api">API</span></td><td><code>app/main.py</code></td><td class="num">142</td><td>엔드포인트, 요청 모델, 메모리 세션</td><td><code>/chat</code> <code>/quote</code> <code>/rfp</code> <code>/ask</code></td></tr>
-      <tr><td><span class="tag intake">접수</span></td><td><code>app/intake.py</code></td><td class="num">166</td><td>자연어 → 조건 슬롯, 되묻기, 예산, 미반영 조건, RFP 조건 미리 채우기</td><td><code>extract</code> <code>parse_budget</code> <code>reply</code></td></tr>
+      <tr><td><span class="tag intake">접수</span></td><td><code>app/intake.py</code></td><td class="num">181</td><td>조건 슬롯 누적·정정, 되묻기, 예산, 미반영 조건, RFP 조건 미리 채우기, 정규식 추출(폴백)</td><td><code>extract</code> <code>parse_budget</code> <code>reply</code></td></tr>
+      <tr><td><span class="tag llm">해석</span></td><td><code>app/understand.py</code></td><td class="num">114</td><td>Claude 구조화 출력으로 애매한 표현 해석 → 원문 구절 존재·숫자 일치 검증 → 실패 시 정규식</td><td><code>understand</code> <code>verify</code> <code>Understood</code></td></tr>
       <tr><td><span class="tag agent">에이전트</span></td><td><code>app/agent.py</code></td><td class="num">235</td><td>도구 10개, <code>RulePlanner(use_rag)</code>, 루프·trace, 견적서 렌더</td><td><code>run_agent</code> <code>RulePlanner.next_action</code></td></tr>
       <tr><td><span class="tag calc">계산</span></td><td><code>app/quote.py</code></td><td class="num">152</td><td>공수·일정·할증·금액·대안·예산 맞추기 (Decimal)</td><td><code>estimate</code> <code>schedule</code> <code>fit_budget</code></td></tr>
       <tr><td><span class="tag calc">근거</span></td><td><code>app/calibration.py</code></td><td class="num">138</td><td>실제 사례 로드·그룹, 검토 판단, 계수 보정·LOO</td><td><code>evidence</code> <code>calibrate</code> <code>loo_mape</code></td></tr>
       <tr><td><span class="tag rq">견적 RAG</span></td><td><code>app/rag_quote.py</code></td><td class="num">123</td><td>① 유사 사례·범위·교차검증 ② RFP 조항 검색 ③ 인용 붙은 과업 수행 내용</td><td><code>retrieve_similar_cases</code> <code>rfp_conditions</code> <code>draft_narrative</code></td></tr>
       <tr><td><span class="tag rag">RAG</span></td><td><code>retrieval.py</code> <code>store.py</code> <code>embeddings.py</code> <code>chunking.py</code></td><td class="num">286</td><td>하이브리드 검색, pgvector/메모리 저장소, e5·가짜 임베딩, 청킹</td><td><code>hybrid_search</code> <code>rrf_fuse</code></td></tr>
-      <tr><td><span class="tag rag">RAG</span></td><td><code>rag.py</code> <code>llm.py</code> <code>config.py</code></td><td class="num">118</td><td>프롬프트·인용 검증, LLM 래퍼(anthropic/openai/ollama/none), .env (<code>QUOTE_RAG</code>)</td><td><code>generate</code> <code>check_citations</code></td></tr>
+      <tr><td><span class="tag rag">RAG</span></td><td><code>rag.py</code> <code>llm.py</code> <code>config.py</code></td><td class="num">118</td><td>프롬프트·인용 검증, LLM 래퍼(anthropic/openai/ollama/none), .env (<code>QUOTE_RAG</code>, <code>EXTRACTOR</code>)</td><td><code>generate</code> <code>check_citations</code></td></tr>
       <tr><td><span class="tag api">스크립트</span></td><td><code>scripts/eval_cases.py</code> <code>make_mock_cases.py</code></td><td class="num">100</td><td>유사 사례 검색 Recall@K·MRR, 가상 사례 30건 생성</td><td><code>jaccard</code></td></tr>
     </table>
     </div>
@@ -401,7 +405,7 @@
     <table>
       <tr><th>라이브러리</th><th class="num">버전</th><th>어디에</th><th>왜</th></tr>
       <tr><td><b>FastAPI</b></td><td class="num">0.143.0</td><td><code>main.py</code></td><td>타입 힌트로 요청 검증·OpenAPI 문서(<code>/docs</code>) 자동 생성. 엔드포인트 추가가 가벼움</td></tr>
-      <tr><td><b>Pydantic</b></td><td class="num">2.14.1</td><td><code>QuoteReq</code> <code>ChatReq</code> <code>RfpReq</code></td><td>잘못된 타입은 API 입구에서 422로 차단. 도메인 검증(교수 수 ≥ 1 등)은 <code>validate()</code>가 질문으로 변환</td></tr>
+      <tr><td><b>Pydantic</b></td><td class="num">2.14.1</td><td><code>QuoteReq</code> <code>ChatReq</code> <code>RfpReq</code></td><td>잘못된 타입은 API 입구에서 422로 차단. LLM 해석 결과 스키마(<code>Understood</code>)로도 사용. 도메인 검증은 <code>validate()</code>가 질문으로 변환</td></tr>
       <tr><td><b>Uvicorn</b></td><td class="num">0.54.0</td><td>실행</td><td>ASGI 서버, <code>--reload</code> 로 개발 속도</td></tr>
       <tr><td><b>PostgreSQL + pgvector</b></td><td class="num">pg16 · 0.5.1</td><td><code>store.py</code> (Docker)</td><td>벡터·메타데이터(<code>kind=quote_ref / mock_case / mock_proposal / rfp</code>)·전문검색을 DB 하나로. 테스트는 <code>MemoryStore</code></td></tr>
       <tr><td><b>psycopg</b></td><td class="num">3.3.6</td><td><code>PgVectorStore</code></td><td>Postgres 드라이버</td></tr>
@@ -409,9 +413,9 @@
       <tr><td><b>NumPy</b></td><td class="num">2.5.4</td><td><code>calibration.py</code> <code>store.py</code></td><td>최소제곱(<code>lstsq</code>)으로 공수 계수 보정, 메모리 저장소 벡터 연산</td></tr>
       <tr><td><b>decimal</b> · <b>statistics</b> (표준)</td><td class="num">—</td><td><code>quote.py</code> <code>rag_quote.py</code></td><td>금액 부동소수 오차 제거 (978,890,000÷1.1 이 889,899,999원 되던 버그), 사례 중앙값</td></tr>
       <tr><td><b>re</b> (표준)</td><td class="num">—</td><td><code>intake.py</code> <code>rag_quote.py</code></td><td>키 없이 동작하는 조건 추출 ("두 달", "1억 5천"), RFP <code>##</code> 조항 분할</td></tr>
-      <tr><td><b>anthropic</b> SDK</td><td class="num">1.13.0</td><td><code>llm.py</code></td><td><span class="tag on">사용</span> ③ 과업 수행 내용 문장 생성 (Claude). SDK 1.x 는 <code>temperature</code> 미지원이라 제거</td></tr>
+      <tr><td><b>anthropic</b> SDK</td><td class="num">1.13.0</td><td><code>llm.py</code></td><td><span class="tag on">사용</span> 입력 해석(<code>messages.parse</code> 구조화 출력) · ③ 과업 수행 내용 문장 (Claude). SDK 1.x 는 <code>temperature</code> 미지원이라 제거</td></tr>
       <tr><td><b>httpx</b></td><td class="num">0.28.1</td><td><code>llm.py</code> · <code>tests/</code></td><td>Ollama 로컬 모델 호출(키 불필요, <code>/api/generate</code>) · FastAPI TestClient</td></tr>
-      <tr><td><b>pytest</b></td><td class="num">9.1.1</td><td><code>tests/</code></td><td>FakeEmbedder·MemoryStore·LLM_PROVIDER=none·QUOTE_RAG=0 으로 DB·네트워크·키 없이 72개 실행</td></tr>
+      <tr><td><b>pytest</b></td><td class="num">9.1.1</td><td><code>tests/</code></td><td>FakeEmbedder·MemoryStore·LLM_PROVIDER=none·QUOTE_RAG=0·EXTRACTOR=regex 로 DB·네트워크·키 없이 81개 실행 (LLM 해석은 가짜 응답 주입)</td></tr>
       <tr><td><b>spec-kit</b> (specify CLI)</td><td class="num">1.2.2.dev0</td><td><code>.specify/</code> <code>specs/</code></td><td>SDD: constitution → spec → plan → tasks → implement, 설계 변경은 spec Amendment 로 기록</td></tr>
       <tr><td><b>openai</b> SDK</td><td class="num">3.31.0</td><td><code>llm.py</code></td><td><span class="tag off">미사용</span> 공급자 교체 지점으로만 남겨 둠</td></tr>
     </table>
@@ -426,17 +430,18 @@
         <h3>숫자는 어디서 만들어지나</h3>
         <ul>
           <li>금액·공수·할증·VAT는 <code>quote.py</code> 순수 함수에서만</li>
-          <li>검색은 사례·조항·문단을 고르기만, LLM은 ③ 문장만 → 숫자를 만들지 않음</li>
+          <li>검색은 사례·조항·문단을 고르기만, LLM은 해석·③ 문장만 → 금액을 만들지 않음</li>
           <li>사례 기반 범위도 정형 <code>cases.jsonl</code> 금액에서 코드가 계산</li>
           <li>문서(<code>modules.md</code>)와 코드 상수가 다르면 테스트 실패</li>
         </ul>
       </div>
       <div class="point">
-        <h3>LLM: 쓰는 곳 1 + 교체 지점 2</h3>
+        <h3>LLM: 쓰는 곳 2 + 교체 지점 1 — 모두 검증 뒤에</h3>
         <ul>
-          <li><b>사용</b>: ③ <code>draft_narrative</code> — Claude(또는 Ollama)가 [n] 인용 문단 작성, <code>check_citations</code> 로 검증</li>
-          <li><b>교체 지점</b>: <code>RulePlanner.next_action(state)</code> → tool-use 플래너, <code>intake.extract(text)</code> → 구조화 추출</li>
-          <li>모두 금액 계산과 분리 → 바꿔도 숫자는 그대로</li>
+          <li><b>입력 해석</b> <code>understand()</code>: "300분 정도", "석 달", "로드맵은 빼줘" → 값마다 원문 구절을 받아 <b>구절 존재·숫자 일치</b>를 코드가 검사, 어긋나면 버리고 되묻기, 숫자 없는 해석은 "이렇게 이해했어요"로 되보여 줌</li>
+          <li><b>③ 문장</b> <code>draft_narrative</code>: [n] 인용 문단, <code>check_citations</code> 로 검증</li>
+          <li><b>교체 지점</b>: <code>RulePlanner.next_action(state)</code> → tool-use 플래너</li>
+          <li>모두 금액 계산과 분리 → 바꿔도 숫자는 그대로, 실패하면 정규식·발췌로 폴백</li>
         </ul>
       </div>
       <div class="point">
@@ -458,11 +463,12 @@
       </div>
     </div>
 
-    <h3 style="margin:20px 0 4px;font-size:15px">테스트 분포 (총 72개)</h3>
+    <h3 style="margin:20px 0 4px;font-size:15px">테스트 분포 (총 81개)</h3>
     <div class="bars">
       <div class="bar"><span>test_quote.py</span><div class="track"><div class="fill" style="width:100%"></div></div><span class="n">25</span></div>
       <div class="bar"><span>test_chat.py</span><div class="track"><div class="fill" style="width:60%"></div></div><span class="n">15</span></div>
       <div class="bar"><span>test_calibration.py</span><div class="track"><div class="fill" style="width:44%"></div></div><span class="n">11</span></div>
+      <div class="bar"><span>test_understand.py</span><div class="track"><div class="fill" style="width:36%;background:var(--warn)"></div></div><span class="n">9</span></div>
       <div class="bar"><span>test_rag_quote.py</span><div class="track"><div class="fill" style="width:32%;background:var(--teal)"></div></div><span class="n">8</span></div>
       <div class="bar"><span>test_api.py (템플릿)</span><div class="track"><div class="fill" style="width:32%"></div></div><span class="n">8</span></div>
       <div class="bar"><span>test_core.py (템플릿)</span><div class="track"><div class="fill" style="width:20%"></div></div><span class="n">5</span></div>
@@ -480,7 +486,7 @@
       <tr><td>유사 사례 재현율 낮음 (Recall@5 ≈ 0.3), 질의 8개·가상 정답 라벨</td><td>질의셋 확대, 범위 메타 필터 + 재순위, 한국어 n-gram 키워드 검토</td></tr>
       <tr><td>③ 과업 수행 내용은 프롬프트로 "숫자 금지"만 지시, 인용 번호 존재만 검증</td><td>담당자 검토 필수 표시 유지, 문장-출처 일치 검사·숫자 검출 가드 추가</td></tr>
       <tr><td>공고 예산 ≠ 낙찰 금액, 재가공 사이트 값</td><td>나라장터 원문 대조, 낙찰 결과 수집</td></tr>
-      <tr><td>규칙 기반 추출, 범위 정정 미지원</td><td>입구에 판단 모델(의도·범위 확률·가드레일) + 숫자는 정규식 유지 + LLM 구조화 추출(검증·폴백)</td></tr>
+      <tr><td>LLM 해석: 채팅마다 호출(1~3초·비용), "석 달"처럼 숫자 없는 해석은 사용자 확인에 의존</td><td>짧은·명확한 입력은 정규식 먼저 시도 후 필요할 때만 LLM, 입구 가드레일(판단 모델) 추가</td></tr>
       <tr><td>예산 대안이 최적해 아님, 세션이 메모리에만 존재</td><td>범위 조합 탐색(31가지), 견적 저장·이력·담당자 승인 워크플로</td></tr>
     </table>
   </section>
