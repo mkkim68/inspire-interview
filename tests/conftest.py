@@ -5,6 +5,8 @@ import os
 os.environ["EMBEDDER"] = "fake"
 os.environ["EMBED_DIM"] = "256"
 os.environ["LLM_PROVIDER"] = "none"
+os.environ["QUOTE_RAG"] = "0"
+os.environ["EXTRACTOR"] = "regex"        # LLM 해석은 test_understand.py 에서 가짜 응답으로 검사          # RAG 견적 단계는 테스트에서 명시적으로 켠다
 os.environ["DATABASE_URL"] = os.environ.get("TEST_DATABASE_URL", "")
 
 import pytest  # noqa: E402

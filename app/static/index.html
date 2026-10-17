@@ -55,6 +55,11 @@
     <h2>대화로 견적 받기</h2>
     <div id="log" class="log"></div>
     <div id="slots" class="muted"></div>
+    <div class="demo muted">가상 RFP 불러오기 (조항 검색 → 조건 채우기):
+      <button type="button" data-rfp="rfp_garam">가람대 PI</button>
+      <button type="button" data-rfp="rfp_nuri">누리대 ISP</button>
+      <button type="button" data-rfp="rfp_dasom">다솜대 ISMP</button>
+    </div>
     <form id="chatform" class="chatform"><input id="msg" type="text" placeholder="조건을 자유롭게 입력하세요" autocomplete="off"><button type="submit">보내기</button></form>
   </section>
   <details><summary class="muted">또는 직접 입력</summary>
@@ -109,6 +114,30 @@ function itemsTable(q) {
     <tr><td colspan="2">부가세 (10%)</td><td class="num">${won(q.vat)}</td><td></td></tr>
     <tr class="total"><td colspan="2">합계</td><td class="num">${won(q.total)}</td><td></td></tr>
   </table>`;
+}
+
+function ragSection(res) {
+  let html = "";
+  if (res.narrative) {
+    const n = res.narrative;
+    html += `<section><h2>과업 수행 내용 <span class="muted">(과거 제안서 검색 · ${esc(n.mode)} · 가상 데이터)</span></h2>
+      <div style="white-space:pre-wrap">${esc(n.text)}</div>
+      <div class="muted">출처: ${n.sources.map(x => `[${x.n}] ${esc(x.chunk_id)}`).join(", ")} · 인용 검증: ${esc(n.check.reason)}</div></section>`;
+  }
+  if (res.similar_cases) {
+    const sc = res.similar_cases, r = sc.range, c = sc.check;
+    html += `<section><h2>유사 사례 <span class="muted">(하이브리드 검색 · 가상 데이터)</span></h2>
+      <div class="facts">
+        <div class="fact"><span class="muted">사례 기반 중앙값</span><b>${won(r.median)}</b></div>
+        <div class="fact"><span class="muted">범위</span><b>${won(r.low)} ~ ${won(r.high)}</b></div>
+        <div class="fact"><span class="muted">공식 금액과 차이</span><b>${(c.diff * 100).toFixed(0)}% ${c.agree ? "· 일치" : "· 검토"}</b></div>
+      </div>
+      <table><tr><th>사례</th><th>유형</th><th class="num">교수</th><th class="num">기간</th><th class="num">금액</th><th>과업 범위</th></tr>
+      ${sc.cases.map(x => `<tr><td>${esc(x.case_id)} ${esc(x.university)}</td><td>${esc(x.type)}</td><td class="num">${x.professors}</td>
+        <td class="num">${x.months}개월</td><td class="num">${won(x.price_vat_excl)}</td><td>${esc(x.scope_text)}</td></tr>`).join("")}</table>
+      <div class="muted">${esc(r.note)}</div></section>`;
+  }
+  return html;
 }
 
 function evidenceSection(res) {
@@ -175,6 +204,7 @@ function renderResult(res, body) {
       <div class="muted">${sources.length ? "근거 문서: " + sources.map(esc).join(", ") : '<span class="warn">검색된 근거 문서가 없습니다.</span>'}</div>
       <div class="muted">※ 단가·공수·사례 조건은 샘플 가정값이며 실제 계약 금액이 아닙니다.</div>
     </section>
+    ${ragSection(res)}
     ${evidenceSection(res)}
     <section><h2>에이전트 처리 기록</h2>
       <ol class="trace">${res.trace.map(t => `<li><code>${esc(t.tool)}</code> — ${esc(t.summary)}</li>`).join("")}</ol>
@@ -191,6 +221,22 @@ function bubble(who, text) {
   $("log").scrollTop = $("log").scrollHeight;
 }
 bubble("bot", "안녕하세요. 견적을 원하시는 대학과 조건을 편하게 말씀해 주세요.\n예: \"고려대인데 교수 100명, 연구자 500명이고 연구비 관리랑 로드맵만 두 달 안에 해주세요. 주 1회 보고도 필요해요\"");
+function showChat(res) {
+  bubble("bot", res.reply);
+  const sl = res.slots;
+  $("slots").textContent = `대학 ${sl.university || "?"} · 교수 ${sl.professors ?? "?"} · 연구자 ${sl.researchers ?? "(미입력)"} · 기간 ${sl.months ?? "?"}개월 · 범위 ${sl.scopes.join(", ") || "?"}`
+    + (sl.budget ? ` · 예산 ${won(sl.budget)} 이하` : "")
+    + (res.unhandled.length ? ` · 반영 안 된 조건: ${res.unhandled.join(" / ")}` : "");
+  if (res.result) renderResult(res.result, sl);
+  else if (res.status === "reset") $("out").innerHTML = "";
+}
+document.querySelectorAll("[data-rfp]").forEach(b => b.addEventListener("click", async () => {
+  bubble("me", `[가상 RFP] ${b.textContent}`);
+  const res = await (await fetch("/rfp", {method: "POST", headers: {"content-type": "application/json"},
+                                          body: JSON.stringify({session_id: SID, name: b.dataset.rfp})})).json();
+  bubble("bot", "RFP에서 찾은 조항:\n" + Object.entries(res.rfp_clauses).map(([k, v]) => `· ${k}: ${v.split("\n").slice(1).join(" ").slice(0, 80)}`).join("\n"));
+  showChat(res);
+}));
 $("chatform").addEventListener("submit", async e => {
   e.preventDefault();
   const msg = $("msg").value.trim();
@@ -199,12 +245,7 @@ $("chatform").addEventListener("submit", async e => {
   $("msg").value = "";
   const res = await (await fetch("/chat", {method: "POST", headers: {"content-type": "application/json"},
                                            body: JSON.stringify({session_id: SID, message: msg})})).json();
-  bubble("bot", res.reply);
-  const sl = res.slots;
-  $("slots").textContent = `대학 ${sl.university || "?"} · 교수 ${sl.professors ?? "?"} · 연구자 ${sl.researchers ?? "(미입력)"} · 기간 ${sl.months ?? "?"}개월 · 범위 ${sl.scopes.join(", ") || "?"}` + (sl.budget ? ` · 예산 ${won(sl.budget)} 이하` : "")
-    + (res.unhandled.length ? ` · 반영 안 된 조건: ${res.unhandled.join(" / ")}` : "");
-  if (res.result) renderResult(res.result, sl);
-  else if (res.status === "reset") $("out").innerHTML = "";
+  showChat(res);
 });
 </script>
 </body>

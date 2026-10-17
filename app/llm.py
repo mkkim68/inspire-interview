@@ -5,12 +5,13 @@ import re
 from .config import settings
 
 
-def generate(prompt: str, max_tokens: int = 700) -> str:
+def generate(prompt: str, max_tokens: int = 2000) -> str:
     provider = settings.llm_provider
     if provider == "anthropic" and os.getenv("ANTHROPIC_API_KEY"):
         import anthropic
         client = anthropic.Anthropic()
-        msg = client.messages.create(model=settings.llm_model, max_tokens=max_tokens, temperature=0,
+        # anthropic SDK 1.x / 최신 모델은 temperature 등 샘플링 파라미터를 받지 않는다
+        msg = client.messages.create(model=settings.llm_model, max_tokens=max_tokens,
                                      messages=[{"role": "user", "content": prompt}])
         return "".join(b.text for b in msg.content if b.type == "text")
     if provider == "openai" and os.getenv("OPENAI_API_KEY"):
@@ -19,6 +20,13 @@ def generate(prompt: str, max_tokens: int = 700) -> str:
         resp = client.chat.completions.create(model=settings.llm_model, temperature=0, max_tokens=max_tokens,
                                               messages=[{"role": "user", "content": prompt}])
         return resp.choices[0].message.content or ""
+    if provider == "ollama":   # 로컬 모델 (예: LLM_MODEL=gemma3n:e2b), 키 불필요
+        import httpx
+        r = httpx.post(f"{settings.ollama_url}/api/generate", timeout=120,
+                       json={"model": settings.llm_model, "prompt": prompt, "stream": False,
+                             "options": {"temperature": 0, "num_predict": max_tokens}})
+        r.raise_for_status()
+        return r.json().get("response", "")
     return _offline_answer(prompt)
 
 

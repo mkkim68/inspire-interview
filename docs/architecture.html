@@ -10,6 +10,7 @@
     --accent:#d9632b; --accent-soft:#fbe9df; --blue:#2f6fde; --blue-soft:#e6eefc;
     --green:#1f8a5b; --green-soft:#e1f3ea; --violet:#7a4fd0; --violet-soft:#efe8fb;
     --gray-soft:#f0f0f3; --warn:#b3261e; --warn-soft:#fdecea;
+    --teal:#11807f; --teal-soft:#e0f3f2; --amber:#9a6a00; --amber-soft:#fbf1d9;
   }
   @media (prefers-color-scheme: dark) {
     :root:not([data-theme="light"]) {
@@ -17,7 +18,15 @@
       --accent:#f08a54; --accent-soft:#3a2418; --blue:#78a4f5; --blue-soft:#1b2639;
       --green:#5cc595; --green-soft:#16302a; --violet:#b292f2; --violet-soft:#281f3b;
       --gray-soft:#26262c; --warn:#f2867d; --warn-soft:#3a1d1b;
+      --teal:#4fc3c8; --teal-soft:#14302f; --amber:#e0b04a; --amber-soft:#352a12;
     }
+  }
+  :root[data-theme="dark"] {
+    --bg:#141416; --card:#1d1d21; --fg:#ececf1; --muted:#9a9aa5; --line:#2e2e35;
+    --accent:#f08a54; --accent-soft:#3a2418; --blue:#78a4f5; --blue-soft:#1b2639;
+    --green:#5cc595; --green-soft:#16302a; --violet:#b292f2; --violet-soft:#281f3b;
+    --gray-soft:#26262c; --warn:#f2867d; --warn-soft:#3a1d1b;
+    --teal:#4fc3c8; --teal-soft:#14302f; --amber:#e0b04a; --amber-soft:#352a12;
   }
   * { box-sizing: border-box; }
   body { margin:0; background:var(--bg); color:var(--fg);
@@ -42,6 +51,15 @@
   .agent { fill: var(--accent-soft); stroke: var(--accent); }
   .calc { fill: var(--green-soft); stroke: var(--green); }
   .data { fill: var(--card); stroke: var(--muted); stroke-dasharray: 4 3; }
+  .rag { fill: var(--teal-soft); stroke: var(--teal); }
+  .rag.opt { stroke-dasharray: 5 3; }
+  .llm { fill: var(--warn-soft); stroke: var(--warn); }
+  .arrow.rag { stroke: var(--teal); stroke-dasharray: 5 3; }
+  .arrow.llmline { stroke: var(--warn); stroke-dasharray: 5 3; }
+  .pill-real { fill: var(--green-soft); stroke: var(--green); }
+  .pill-assume { fill: var(--amber-soft); stroke: var(--amber); }
+  .pill-mock { fill: var(--violet-soft); stroke: var(--violet); }
+  .t-pill { font-size:11px; font-weight:700; }
   .arrow { stroke: var(--muted); stroke-width:1.6; fill:none; marker-end:url(#ah); }
   .arrow.hot { stroke: var(--accent); }
   .t-title { font-weight:700; font-size:14px; }
@@ -61,7 +79,27 @@
   .tag.calc { background:var(--green-soft); color:var(--green); }
   .tag.rag { background:var(--gray-soft); color:var(--fg); }
   .tag.off { background:var(--warn-soft); color:var(--warn); }
-  .grid2 { display:grid; grid-template-columns: repeat(auto-fit, minmax(300px,1fr)); gap:14px; }
+  .tag.on { background:var(--green-soft); color:var(--green); }
+  .tag.rq { background:var(--teal-soft); color:var(--teal); }
+  .tag.llm { background:var(--warn-soft); color:var(--warn); }
+  .tag.real { background:var(--green-soft); color:var(--green); font-weight:700; }
+  .tag.assume { background:var(--amber-soft); color:var(--amber); font-weight:700; }
+  .tag.mock { background:var(--violet-soft); color:var(--violet); font-weight:700; }
+  .grid3 { display:grid; grid-template-columns: repeat(auto-fit, minmax(250px,1fr)); gap:14px; }
+  .rq-card { border:1px solid var(--line); border-top:3px solid var(--teal); border-radius:10px; padding:14px 16px; }
+  .rq-card h3 { margin:0 0 8px; font-size:15px; }
+  .rq-card dl { margin:0; font-size:13.5px; }
+  .rq-card dt { color:var(--muted); font-size:12px; font-weight:600; margin-top:8px; }
+  .rq-card dd { margin:2px 0 0; }
+  .note { background:var(--gray-soft); border-radius:8px; padding:10px 14px; font-size:13.5px; margin-top:14px; }
+  .ev { display:grid; grid-template-columns: 70px 1fr 1fr; gap:6px 14px; align-items:center; font-size:13px; margin-top:8px; }
+  .ev .h { color:var(--muted); font-size:12px; font-weight:600; }
+  .ev .cell { display:grid; grid-template-columns: 1fr 36px; gap:8px; align-items:center; }
+  .ev .track { background:var(--gray-soft); border-radius:6px; height:12px; overflow:hidden; }
+  .ev .fill { height:100%; border-radius:6px; background:var(--muted); }
+  .ev .fill.best { background:var(--teal); }
+  .ev .n { text-align:right; font-variant-numeric: tabular-nums; }
+  .grid2 { display:grid; grid-template-columns: repeat(auto-fit, minmax(min(100%,420px),1fr)); gap:14px; }
   .point { border:1px solid var(--line); border-radius:10px; padding:14px 16px; }
   .point h3 { margin:0 0 6px; font-size:15px; }
   .point p, .point ul { margin:0; font-size:14px; }
@@ -81,22 +119,23 @@
 <main>
   <header>
     <h1>대학 연구행정 PI 견적 에이전트 — 아키텍처</h1>
-    <p>채팅으로 조건을 받아 공수·일정·금액을 계산하고, 실제 입찰 사례와 비교해 근거가 부족하면 담당자 검토를 요구하는 서비스</p>
+    <p>채팅·RFP로 조건을 받아 공수·일정·금액을 계산하고, 실제 입찰 사례·유사 사례(검색)와 비교해 근거가 부족하면 담당자 검토를 요구하는 서비스</p>
     <div class="stats">
-      <div class="stat"><b>8</b><span>에이전트 도구</span></div>
-      <div class="stat"><b>64</b><span>테스트 (DB·키 없이 통과)</span></div>
+      <div class="stat"><b>10</b><span>에이전트 도구 (RAG 2개 포함)</span></div>
+      <div class="stat"><b>81</b><span>테스트 (DB·키 없이 통과)</span></div>
       <div class="stat"><b>8건</b><span>실제 대학 입찰공고 사례</span></div>
-      <div class="stat"><b>~1,100</b><span>Python 라인 (app/)</span></div>
-      <div class="stat"><b>0</b><span>LLM 호출 (오프라인 동작)</span></div>
+      <div class="stat"><b>30건</b><span>가상 사례 (+ RFP 3 · 제안서 문단 6)</span></div>
+      <div class="stat"><b>~1,490</b><span>Python 라인 (app/)</span></div>
+      <div class="stat"><b>2곳</b><span>LLM 사용처: 입력 해석 · ③ 문장 (계산 X)</span></div>
     </div>
   </header>
 
   <!-- 1. 요청 흐름 -->
   <section>
     <h2><span class="num">1</span>요청 흐름</h2>
-    <p class="lead">입구(채팅·폼) → 접수 → 에이전트 루프 → 계산 모듈. <b>숫자는 초록색 계산 계층에서만</b> 만들어집니다.</p>
+    <p class="lead">입구(채팅·폼·RFP) → 접수 → 에이전트 루프 → 계산·근거·RAG. <b>숫자는 초록색 계산 계층에서만</b> 만들어지고, LLM은 <b>입력 해석</b>(원문 근거 검증)과 <b>③ 문장 작성</b>에만 연결됩니다.</p>
     <div class="scroll">
-    <svg viewBox="0 0 1060 470" role="img" aria-label="요청 흐름 다이어그램">
+    <svg viewBox="0 0 1080 620" role="img" aria-label="요청 흐름 다이어그램">
       <defs>
         <marker id="ah" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
           <path d="M0,0 L10,5 L0,10 z" fill="currentColor" style="color:var(--muted)"/>
@@ -104,93 +143,131 @@
       </defs>
 
       <!-- UI -->
-      <rect class="box ui" x="20" y="30" width="190" height="96" rx="10"/>
+      <rect class="box ui" x="20" y="30" width="200" height="96" rx="10"/>
       <text class="t-title" x="36" y="56">화면</text>
       <text class="t-mono" x="36" y="78">app/static/index.html</text>
-      <text class="t-sub" x="36" y="98">채팅창 + 직접 입력 폼</text>
-      <text class="t-sub" x="36" y="114">견적·대안·근거·trace 렌더</text>
+      <text class="t-sub" x="36" y="98">채팅 · 폼 · 가상 RFP 버튼</text>
+      <text class="t-sub" x="36" y="114">견적 · 유사 사례 · 수행 내용</text>
 
       <!-- API -->
-      <rect class="box api" x="270" y="30" width="190" height="96" rx="10"/>
+      <rect class="box api" x="270" y="30" width="210" height="96" rx="10"/>
       <text class="t-title" x="286" y="56">API · FastAPI</text>
       <text class="t-mono" x="286" y="78">app/main.py</text>
-      <text class="t-sub" x="286" y="98">POST /chat · POST /quote</text>
+      <text class="t-sub" x="286" y="98">POST /chat · /quote · /rfp</text>
       <text class="t-sub" x="286" y="114">Pydantic 요청 검증</text>
 
       <!-- Intake -->
-      <rect class="box intake" x="520" y="30" width="230" height="96" rx="10"/>
-      <text class="t-title" x="536" y="56">대화형 접수</text>
-      <text class="t-mono" x="536" y="78">app/intake.py</text>
-      <text class="t-sub" x="536" y="98">extract() 규칙 기반 조건 추출</text>
-      <text class="t-sub" x="536" y="114">세션 누적 · 되묻기 · 예산 · 미반영 조건</text>
+      <rect class="box intake" x="530" y="30" width="240" height="96" rx="10"/>
+      <text class="t-title" x="546" y="56">대화형 접수 · 해석</text>
+      <text class="t-mono" x="546" y="78">intake.py · understand.py</text>
+      <text class="t-sub" x="546" y="98">LLM 해석 → 원문 구절·숫자 검증</text>
+      <text class="t-sub" x="546" y="114">실패 시 정규식 · 정정 · 되묻기</text>
 
       <!-- Agent -->
-      <rect class="box agent" x="270" y="180" width="480" height="120" rx="10"/>
+      <rect class="box agent" x="270" y="180" width="500" height="140" rx="10"/>
       <text class="t-title" x="286" y="206">에이전트 루프</text>
       <text class="t-mono" x="286" y="226">app/agent.py · run_agent(req, planner, max_steps=10)</text>
-      <text class="t-sub" x="286" y="248">RulePlanner.next_action(state) → 도구 실행 → trace 기록 → 반복</text>
-      <text class="t-sub" x="286" y="268">search_refs · estimate_effort · check_schedule · price · propose_options</text>
-      <text class="t-sub" x="286" y="286">compare_case · check_evidence · render_quote</text>
+      <text class="t-sub" x="286" y="248">RulePlanner.next_action(state) → 도구 실행 → trace 기록</text>
+      <text class="t-mono" x="286" y="270">search_refs · estimate_effort · check_schedule</text>
+      <text class="t-mono" x="286" y="288">price | propose_options · compare_case · check_evidence</text>
+      <text class="t-mono" x="286" y="306" style="fill:var(--teal)">+ retrieve_cases · draft_narrative (QUOTE_RAG=1)</text>
 
       <!-- Calc -->
-      <rect class="box calc" x="20" y="350" width="250" height="96" rx="10"/>
-      <text class="t-title" x="36" y="376">견적 계산 (순수 함수)</text>
-      <text class="t-mono" x="36" y="398">app/quote.py</text>
-      <text class="t-sub" x="36" y="418">effort · schedule · estimate</text>
-      <text class="t-sub" x="36" y="434">propose_options · fit_budget · Decimal</text>
+      <rect class="box calc" x="20" y="380" width="225" height="110" rx="10"/>
+      <text class="t-title" x="36" y="406">견적 계산 (순수 함수)</text>
+      <text class="t-mono" x="36" y="428">app/quote.py</text>
+      <text class="t-sub" x="36" y="450">effort · schedule · estimate</text>
+      <text class="t-sub" x="36" y="468">대안 · 예산 맞추기 · Decimal</text>
 
-      <rect class="box calc" x="300" y="350" width="230" height="96" rx="10"/>
-      <text class="t-title" x="316" y="376">근거 · 보정</text>
-      <text class="t-mono" x="316" y="398">app/calibration.py</text>
-      <text class="t-sub" x="316" y="418">사례 그룹 · 검토 필요 판단</text>
-      <text class="t-sub" x="316" y="434">최소제곱 + LOO 백테스트 (NumPy)</text>
+      <rect class="box calc" x="260" y="380" width="205" height="110" rx="10"/>
+      <text class="t-title" x="276" y="406">근거 · 보정</text>
+      <text class="t-mono" x="276" y="428">app/calibration.py</text>
+      <text class="t-sub" x="276" y="450">실제 사례 그룹 · 검토 판단</text>
+      <text class="t-sub" x="276" y="468">최소제곱 + LOO (NumPy)</text>
 
-      <rect class="box api" x="560" y="350" width="230" height="96" rx="10"/>
-      <text class="t-title" x="576" y="376">검색 · 저장 (RAG 템플릿)</text>
-      <text class="t-mono" x="576" y="398">retrieval · store · embeddings</text>
-      <text class="t-sub" x="576" y="418">하이브리드(벡터+키워드, RRF)</text>
-      <text class="t-sub" x="576" y="434">pgvector / MemoryStore · e5</text>
+      <!-- RAG quote -->
+      <rect class="box rag" x="480" y="380" width="290" height="110" rx="10"/>
+      <text class="t-title" x="496" y="406">견적 RAG</text>
+      <text class="t-mono" x="576" y="406">app/rag_quote.py</text>
+      <text class="t-sub" x="496" y="428">① 유사 사례 → 범위 · 교차검증</text>
+      <text class="t-sub" x="496" y="448">② RFP 조항 → 조건 추출</text>
+      <text class="t-sub" x="496" y="468">③ 제안서 문단 → [n] 인용 문장</text>
+
+      <!-- Retrieval template -->
+      <rect class="box api" x="480" y="530" width="290" height="70" rx="10"/>
+      <text class="t-title" x="496" y="554">검색 · 저장 (템플릿)</text>
+      <text class="t-mono" x="496" y="574">retrieval · store · embeddings</text>
+      <text class="t-sub" x="496" y="591">하이브리드 RRF · pgvector/Memory · e5</text>
+
+      <!-- LLM -->
+      <rect class="box llm" x="800" y="530" width="260" height="70" rx="10"/>
+      <text class="t-title" x="816" y="554">LLM · app/llm.py</text>
+      <text class="t-sub" x="816" y="574">Claude / Ollama / none · 계산 안 함</text>
+      <text class="t-sub" x="816" y="591">해석(EXTRACTOR=llm) · ③ 문장</text>
 
       <!-- Data -->
-      <rect class="box data" x="820" y="180" width="220" height="266" rx="10"/>
-      <text class="t-title" x="836" y="206">데이터 data/quote/</text>
-      <text class="t-mono" x="836" y="232">cases.csv</text>
-      <text class="t-sub" x="836" y="250">실제 입찰공고 8건 · 출처 URL</text>
-      <text class="t-mono" x="836" y="282">rate_card.md</text>
-      <text class="t-sub" x="836" y="300">단가 (샘플 가정값)</text>
-      <text class="t-mono" x="836" y="332">modules.md</text>
-      <text class="t-sub" x="836" y="350">공수 계수·할증 규칙 (가정값)</text>
-      <text class="t-mono" x="836" y="382">snu_pi_case.md</text>
-      <text class="t-sub" x="836" y="400">서울대 사례 + 기준 조건</text>
-      <text class="t-label" x="836" y="430">문서 ↔ 코드 상수 일치는 테스트로 검사</text>
+      <rect class="box data" x="800" y="180" width="260" height="310" rx="10"/>
+      <text class="t-title" x="816" y="206">데이터 data/quote/</text>
+
+      <rect class="pill-real" x="816" y="222" width="40" height="18" rx="9"/>
+      <text class="t-pill" x="824" y="235" style="fill:var(--green)">실제</text>
+      <text class="t-mono" x="864" y="235">cases.csv</text>
+      <text class="t-sub" x="816" y="258">대학 입찰공고 8건 · KOSA 임금</text>
+
+      <rect class="pill-assume" x="816" y="280" width="40" height="18" rx="9"/>
+      <text class="t-pill" x="824" y="293" style="fill:var(--amber)">가정</text>
+      <text class="t-mono" x="864" y="293">rate_card · modules</text>
+      <text class="t-sub" x="816" y="316">단가 · 공수 계수 · 할증</text>
+      <text class="t-sub" x="816" y="334">snu_pi_case.md 기준 조건</text>
+
+      <rect class="pill-mock" x="816" y="356" width="40" height="18" rx="9"/>
+      <text class="t-pill" x="824" y="369" style="fill:var(--violet)">가상</text>
+      <text class="t-mono" x="864" y="369">mock/</text>
+      <text class="t-sub" x="816" y="392">cases.jsonl 사례 30건</text>
+      <text class="t-sub" x="816" y="410">rfps/*.md 가상 RFP 3건</text>
+      <text class="t-sub" x="816" y="428">proposals.md 제안서 문단 6</text>
+      <text class="t-label" x="816" y="470">문서 ↔ 코드 상수는 테스트로 검사</text>
 
       <!-- arrows -->
-      <path class="arrow" d="M210,78 L268,78"/>
-      <path class="arrow" d="M460,78 L518,78"/>
-      <path class="arrow hot" d="M635,126 L635,178"/>
-      <text class="t-label" x="642" y="156">조건이 다 모이면</text>
-      <path class="arrow" d="M365,126 L365,178"/>
-      <text class="t-label" x="372" y="156">/quote 직접</text>
-      <path class="arrow hot" d="M330,300 L170,348"/>
-      <path class="arrow hot" d="M440,300 L420,348"/>
-      <path class="arrow" d="M640,300 L670,348"/>
-      <path class="arrow" d="M530,398 L558,398"/>
-      <path class="arrow" d="M790,398 L818,398"/>
-      <path class="arrow" d="M750,240 L818,240"/>
+      <path class="arrow" d="M220,78 L268,78"/>
+      <path class="arrow" d="M480,78 L528,78"/>
+      <text class="t-label" x="484" y="70">/chat</text>
+      <path class="arrow hot" d="M650,126 L650,178"/>
+      <text class="t-label" x="657" y="156">조건이 다 모이면</text>
+      <path class="arrow" d="M375,126 L375,178"/>
+      <text class="t-label" x="382" y="156">/quote 직접</text>
+      <!-- /rfp: API -> rag_quote (②) -> intake -->
+      <path class="arrow rag" d="M480,112 L500,112 L500,140 L785,140 L785,410 L772,410"/>
+      <path class="arrow rag" d="M785,140 L785,100 L772,100"/>
+      <text class="t-label" x="508" y="158" style="fill:var(--teal)">/rfp: ② 조항 → 세션</text>
+      <!-- agent -> layers -->
+      <path class="arrow hot" d="M320,320 L150,378"/>
+      <path class="arrow hot" d="M380,320 L370,378"/>
+      <path class="arrow rag" d="M600,320 L600,378"/>
+      <text class="t-label" x="607" y="352" style="fill:var(--teal)">①③ QUOTE_RAG=1</text>
+      <path class="arrow" d="M620,490 L620,528"/>
+      <path class="arrow llmline" d="M770,470 L800,545"/>
+      <text class="t-label" x="764" y="512" style="fill:var(--warn)">③</text>
+      <path class="arrow rag" d="M770,440 L798,440"/>
+      <!-- 입력 해석: intake -> LLM (오른쪽 바깥으로 돌아서) -->
+      <path class="arrow llmline" d="M770,48 L1070,48 L1070,565 L1062,565"/>
+      <text class="t-label" x="900" y="42" style="fill:var(--warn)">입력 해석 (EXTRACTOR=llm)</text>
     </svg>
     </div>
     <div class="legend">
       <span class="tag ui">화면</span><span class="tag api">API·검색</span><span class="tag intake">접수</span>
       <span class="tag agent">에이전트</span><span class="tag calc">계산 (숫자의 유일한 출처)</span>
+      <span class="tag rq">견적 RAG (점선 = QUOTE_RAG=1 일 때만)</span><span class="tag llm">LLM (입력 해석 · ③ 문장)</span>
+      <span class="tag real">실제</span><span class="tag assume">가정</span><span class="tag mock">가상</span>
     </div>
   </section>
 
   <!-- 2. 에이전트 루프 -->
   <section>
     <h2><span class="num">2</span>에이전트 루프 — 상태 기반 분기</h2>
-    <p class="lead">플래너는 "상태에 아직 없는 것"을 보고 다음 도구를 고릅니다. 일정 판단 결과에 따라 경로가 갈립니다.</p>
+    <p class="lead">플래너는 "상태에 아직 없는 것"을 보고 다음 도구를 고릅니다. 일정 판단 결과에 따라 경로가 갈리고, <code>QUOTE_RAG=1</code> 이면 점선 두 단계가 추가됩니다.</p>
     <div class="scroll">
-    <svg viewBox="0 0 1060 230" role="img" aria-label="에이전트 상태 분기 다이어그램">
+    <svg viewBox="0 0 1060 330" role="img" aria-label="에이전트 상태 분기 다이어그램">
       <g>
         <rect class="box api" x="10" y="80" width="110" height="56" rx="8"/>
         <text class="t-mono" x="22" y="104">validate</text><text class="t-sub" x="22" y="122">누락→되묻기</text>
@@ -213,131 +290,208 @@
         <rect class="box agent" x="730" y="80" width="110" height="56" rx="8"/>
         <text class="t-mono" x="742" y="104">compare_case</text><text class="t-sub" x="742" y="122">설명용 비교</text>
 
-        <rect class="box agent" x="860" y="14" width="124" height="56" rx="8"/>
-        <text class="t-mono" x="872" y="38">check_evidence</text><text class="t-sub" x="872" y="56">검토 필요?</text>
+        <rect class="box agent" x="870" y="80" width="130" height="56" rx="8"/>
+        <text class="t-mono" x="882" y="104">check_evidence</text><text class="t-sub" x="882" y="122">실제 사례·검토?</text>
 
-        <rect class="box ui" x="860" y="150" width="110" height="56" rx="8"/>
-        <text class="t-mono" x="872" y="174">render_quote</text><text class="t-sub" x="872" y="192">견적서</text>
+        <rect class="box rag opt" x="870" y="250" width="140" height="56" rx="8"/>
+        <text class="t-mono" x="882" y="274">retrieve_cases</text><text class="t-sub" x="882" y="292">① 유사 사례 ±25%</text>
+
+        <rect class="box rag opt" x="690" y="250" width="140" height="56" rx="8"/>
+        <text class="t-mono" x="702" y="274">draft_narrative</text><text class="t-sub" x="702" y="292">③ [n] 인용 문장</text>
+
+        <rect class="box ui" x="510" y="250" width="130" height="56" rx="8"/>
+        <text class="t-mono" x="522" y="274">render_quote</text><text class="t-sub" x="522" y="292">견적서</text>
       </g>
       <path class="arrow" d="M120,108 L138,108"/>
       <path class="arrow" d="M250,108 L268,108"/>
-      <path class="arrow" d="M390,108 L408,108"/>
+      <path class="arrow" d="M396,108 L408,108"/>
       <path class="arrow hot" d="M530,100 L568,50"/><text class="t-label" x="512" y="70">≤ 8명</text>
       <path class="arrow hot" d="M530,116 L568,170"/><text class="t-label" x="512" y="160">&gt; 8명</text>
       <path class="arrow" d="M700,44 L728,96"/>
       <path class="arrow" d="M700,178 L728,122"/>
-      <path class="arrow" d="M840,100 L858,52"/>
-      <path class="arrow" d="M915,70 L915,148"/>
-      <text class="t-label" x="980" y="110">→ ok /</text>
-      <text class="t-label" x="980" y="126">infeasible</text>
+      <path class="arrow" d="M840,108 L868,108"/>
+      <path class="arrow rag" d="M940,136 L940,248"/>
+      <text class="t-label" x="948" y="196" style="fill:var(--teal)">QUOTE_RAG=1</text>
+      <path class="arrow rag" d="M870,278 L832,278"/>
+      <path class="arrow rag" d="M690,278 L642,278"/>
+      <path class="arrow" d="M880,136 L630,248"/>
+      <text class="t-label" x="760" y="200">QUOTE_RAG=0</text>
+      <text class="t-label" x="380" y="274">→ ok /</text>
+      <text class="t-label" x="380" y="290">infeasible</text>
+      <path class="arrow" d="M510,278 L440,278"/>
     </svg>
+    </div>
+    <p class="lead" style="margin:10px 0 0">유사 사례 중앙값과 공식 금액이 ±25% 밖이면 <code>retrieve_cases</code> 가 <code>review.reasons</code> 에 사유를 추가합니다 (숫자 자체는 바꾸지 않음). 테스트는 <code>conftest.py</code> 에서 <code>QUOTE_RAG=0</code> 으로 고정하고 RAG 테스트에서만 명시적으로 켭니다.</p>
+  </section>
+
+  <!-- 3. RAG 3곳 -->
+  <section>
+    <h2><span class="num">3</span>RAG 3곳 — 검색 결과가 견적에 실제로 쓰이는 곳</h2>
+    <p class="lead">검색은 "어떤 사례·조항·문단을 볼지"만 정합니다. 데이터는 모두 <span class="tag mock">가상</span> <code>data/quote/mock/</code>.</p>
+    <div class="grid3">
+      <div class="rq-card">
+        <h3>① 유사 사례</h3>
+        <dl>
+          <dt>무엇을 검색</dt><dd>가상 사례 30건 (1건 = 1청크, <code>kind=mock_case</code>), 과업 범위 문구로 하이브리드 검색 top-5</dd>
+          <dt>결과가 어디에</dt><dd><code>case_based_range</code>: 사례 금액 × √(교수 수 비율) <span class="tag assume">가정</span> → 최소·중앙·최대 → <code>cross_check</code> 공식과 ±25% 비교, 벗어나면 검토 사유</dd>
+          <dt>숫자는 누가</dt><dd>금액·교수 수는 정형 <code>cases.jsonl</code> 에서. 검색은 사례 ID만 고름</dd>
+        </dl>
+      </div>
+      <div class="rq-card">
+        <h3>② RFP 조항</h3>
+        <dl>
+          <dt>무엇을 검색</dt><dd>RFP를 <code>##</code> 조항 단위로 적재 → 사업 개요·사업기간·사업예산·과업 범위·기타 요구사항을 조항별 검색 top-1</dd>
+          <dt>결과가 어디에</dt><dd>찾은 조항만 <code>intake.extract</code> 에 넣어 조건 추출 → <code>POST /rfp</code> 가 채팅 세션을 채우고 견적까지</dd>
+          <dt>숫자는 누가</dt><dd>기간·예산·교수 수는 정규식 추출 → <code>quote.py</code> 계산</dd>
+        </dl>
+      </div>
+      <div class="rq-card">
+        <h3>③ 과업 수행 내용</h3>
+        <dl>
+          <dt>무엇을 검색</dt><dd>범위별로 과거 제안서 문단 (<code>kind=mock_proposal</code>, 6문단) top-1</dd>
+          <dt>결과가 어디에</dt><dd>LLM이 [n] 인용 붙여 문단 작성 (<code>rag.build_prompt</code> + <code>check_citations</code>). 키 없으면 첫 문장 발췌</dd>
+          <dt>숫자는 누가</dt><dd>프롬프트로 "숫자 쓰지 말 것" 지시. 금액은 견적 표에서만</dd>
+        </dl>
+      </div>
+    </div>
+    <div class="note">
+      <b>실제 실행 (Claude, <code>LLM_MODEL=claude-sonnet-4-6</code>)</b> — 누리대 가상 RFP → 조항 5개 검색 → Claude가 과업 수행 내용 작성, 인용 [1][2][3] 검증 통과 ·
+      유사 사례 중앙값 <b>481,692,157원</b> 대비 공식 금액 <b>−62%</b> → ±25% 밖이므로 <b>검토 필요</b>.
+    </div>
+
+    <h3 style="margin:20px 0 2px;font-size:15px">유사 사례 검색 품질 (<code>scripts/eval_cases.py</code>, e5, 질의 8개)</h3>
+    <p class="lead" style="margin:0 0 4px">질의는 사례와 다른 표현으로 작성. 정답 = 요청 범위와 사례 범위 자카드 ≥ 0.5. 표본이 작고 정답 라벨도 가상 데이터 기준.</p>
+    <div class="ev">
+      <span class="h">모드</span><span class="h">Recall@5</span><span class="h">MRR</span>
+      <span>vector</span>
+      <span class="cell"><span class="track"><span class="fill best" style="display:block;width:34%"></span></span><span class="n">0.34</span></span>
+      <span class="cell"><span class="track"><span class="fill" style="display:block;width:51%"></span></span><span class="n">0.51</span></span>
+      <span>keyword</span>
+      <span class="cell"><span class="track"><span class="fill" style="display:block;width:29%"></span></span><span class="n">0.29</span></span>
+      <span class="cell"><span class="track"><span class="fill" style="display:block;width:62%"></span></span><span class="n">0.62</span></span>
+      <span><b>hybrid</b></span>
+      <span class="cell"><span class="track"><span class="fill" style="display:block;width:32%"></span></span><span class="n">0.32</span></span>
+      <span class="cell"><span class="track"><span class="fill best" style="display:block;width:65%"></span></span><span class="n"><b>0.65</b></span></span>
     </div>
   </section>
 
-  <!-- 3. 계층별 파일 -->
+  <!-- 4. 계층별 파일 -->
   <section>
-    <h2><span class="num">3</span>계층별 파일</h2>
-    <p class="lead">견적 기능은 RAG 템플릿 위에 4개 파일(intake·agent·quote·calibration)을 더한 구조입니다.</p>
+    <h2><span class="num">4</span>계층별 파일</h2>
+    <p class="lead">견적 기능은 RAG 템플릿 위에 6개 파일(intake·understand·agent·quote·calibration·rag_quote)을 더한 구조입니다.</p>
     <div class="scroll">
     <table>
       <tr><th>계층</th><th>파일</th><th class="num">라인</th><th>역할</th><th>핵심 함수</th></tr>
-      <tr><td><span class="tag ui">화면</span></td><td><code>app/static/index.html</code></td><td class="num">211</td><td>채팅창, 직접 입력 폼, 견적·대안·근거·trace 표시 (바닐라 JS)</td><td><code>renderResult</code> <code>evidenceSection</code></td></tr>
-      <tr><td><span class="tag api">API</span></td><td><code>app/main.py</code></td><td class="num">123</td><td>엔드포인트, 요청 모델, 메모리 세션</td><td><code>/chat</code> <code>/quote</code> <code>/ask</code></td></tr>
-      <tr><td><span class="tag intake">접수</span></td><td><code>app/intake.py</code></td><td class="num">164</td><td>자연어 → 조건 슬롯, 되묻기, 예산, 미반영 조건</td><td><code>extract</code> <code>parse_budget</code> <code>reply</code></td></tr>
-      <tr><td><span class="tag agent">에이전트</span></td><td><code>app/agent.py</code></td><td class="num">190</td><td>도구 8개, RulePlanner, 루프·trace, 견적서 렌더</td><td><code>run_agent</code> <code>RulePlanner.next_action</code></td></tr>
+      <tr><td><span class="tag ui">화면</span></td><td><code>app/static/index.html</code></td><td class="num">252</td><td>채팅창, 직접 입력 폼, 가상 RFP 버튼, 견적·대안·근거·유사 사례·과업 수행 내용·trace 표시</td><td><code>renderResult</code> <code>evidenceSection</code></td></tr>
+      <tr><td><span class="tag api">API</span></td><td><code>app/main.py</code></td><td class="num">142</td><td>엔드포인트, 요청 모델, 메모리 세션</td><td><code>/chat</code> <code>/quote</code> <code>/rfp</code> <code>/ask</code></td></tr>
+      <tr><td><span class="tag intake">접수</span></td><td><code>app/intake.py</code></td><td class="num">181</td><td>조건 슬롯 누적·정정, 되묻기, 예산, 미반영 조건, RFP 조건 미리 채우기, 정규식 추출(폴백)</td><td><code>extract</code> <code>parse_budget</code> <code>reply</code></td></tr>
+      <tr><td><span class="tag llm">해석</span></td><td><code>app/understand.py</code></td><td class="num">114</td><td>Claude 구조화 출력으로 애매한 표현 해석 → 원문 구절 존재·숫자 일치 검증 → 실패 시 정규식</td><td><code>understand</code> <code>verify</code> <code>Understood</code></td></tr>
+      <tr><td><span class="tag agent">에이전트</span></td><td><code>app/agent.py</code></td><td class="num">235</td><td>도구 10개, <code>RulePlanner(use_rag)</code>, 루프·trace, 견적서 렌더</td><td><code>run_agent</code> <code>RulePlanner.next_action</code></td></tr>
       <tr><td><span class="tag calc">계산</span></td><td><code>app/quote.py</code></td><td class="num">152</td><td>공수·일정·할증·금액·대안·예산 맞추기 (Decimal)</td><td><code>estimate</code> <code>schedule</code> <code>fit_budget</code></td></tr>
       <tr><td><span class="tag calc">근거</span></td><td><code>app/calibration.py</code></td><td class="num">138</td><td>실제 사례 로드·그룹, 검토 판단, 계수 보정·LOO</td><td><code>evidence</code> <code>calibrate</code> <code>loo_mape</code></td></tr>
+      <tr><td><span class="tag rq">견적 RAG</span></td><td><code>app/rag_quote.py</code></td><td class="num">123</td><td>① 유사 사례·범위·교차검증 ② RFP 조항 검색 ③ 인용 붙은 과업 수행 내용</td><td><code>retrieve_similar_cases</code> <code>rfp_conditions</code> <code>draft_narrative</code></td></tr>
       <tr><td><span class="tag rag">RAG</span></td><td><code>retrieval.py</code> <code>store.py</code> <code>embeddings.py</code> <code>chunking.py</code></td><td class="num">286</td><td>하이브리드 검색, pgvector/메모리 저장소, e5·가짜 임베딩, 청킹</td><td><code>hybrid_search</code> <code>rrf_fuse</code></td></tr>
-      <tr><td><span class="tag rag">RAG</span></td><td><code>rag.py</code> <code>llm.py</code> <code>config.py</code></td><td class="num">106</td><td>프롬프트·인용 검증, LLM 래퍼(none/anthropic/openai), .env</td><td><code>generate</code> <code>check_citations</code></td></tr>
+      <tr><td><span class="tag rag">RAG</span></td><td><code>rag.py</code> <code>llm.py</code> <code>config.py</code></td><td class="num">118</td><td>프롬프트·인용 검증, LLM 래퍼(anthropic/openai/ollama/none), .env (<code>QUOTE_RAG</code>, <code>EXTRACTOR</code>)</td><td><code>generate</code> <code>check_citations</code></td></tr>
+      <tr><td><span class="tag api">스크립트</span></td><td><code>scripts/eval_cases.py</code> <code>make_mock_cases.py</code></td><td class="num">100</td><td>유사 사례 검색 Recall@K·MRR, 가상 사례 30건 생성</td><td><code>jaccard</code></td></tr>
     </table>
     </div>
   </section>
 
-  <!-- 4. 프레임워크·라이브러리 -->
+  <!-- 5. 프레임워크·라이브러리 -->
   <section>
-    <h2><span class="num">4</span>프레임워크 · 라이브러리</h2>
+    <h2><span class="num">5</span>프레임워크 · 라이브러리</h2>
     <p class="lead">conda <code>interview</code> 환경 기준 버전. 신규 의존성 없이 템플릿 의존성만 사용했습니다.</p>
     <div class="scroll">
     <table>
       <tr><th>라이브러리</th><th class="num">버전</th><th>어디에</th><th>왜</th></tr>
       <tr><td><b>FastAPI</b></td><td class="num">0.143.0</td><td><code>main.py</code></td><td>타입 힌트로 요청 검증·OpenAPI 문서(<code>/docs</code>) 자동 생성. 엔드포인트 추가가 가벼움</td></tr>
-      <tr><td><b>Pydantic</b></td><td class="num">2.14.1</td><td><code>QuoteReq</code> <code>ChatReq</code></td><td>잘못된 타입은 API 입구에서 422로 차단. 도메인 검증(교수 수 ≥ 1 등)은 <code>validate()</code>가 질문으로 변환</td></tr>
+      <tr><td><b>Pydantic</b></td><td class="num">2.14.1</td><td><code>QuoteReq</code> <code>ChatReq</code> <code>RfpReq</code></td><td>잘못된 타입은 API 입구에서 422로 차단. LLM 해석 결과 스키마(<code>Understood</code>)로도 사용. 도메인 검증은 <code>validate()</code>가 질문으로 변환</td></tr>
       <tr><td><b>Uvicorn</b></td><td class="num">0.54.0</td><td>실행</td><td>ASGI 서버, <code>--reload</code> 로 개발 속도</td></tr>
-      <tr><td><b>PostgreSQL + pgvector</b></td><td class="num">pg16 · 0.5.1</td><td><code>store.py</code> (Docker)</td><td>벡터·메타데이터(<code>kind=quote_ref</code>)·전문검색을 DB 하나로. 테스트는 <code>MemoryStore</code> 로 대체</td></tr>
+      <tr><td><b>PostgreSQL + pgvector</b></td><td class="num">pg16 · 0.5.1</td><td><code>store.py</code> (Docker)</td><td>벡터·메타데이터(<code>kind=quote_ref / mock_case / mock_proposal / rfp</code>)·전문검색을 DB 하나로. 테스트는 <code>MemoryStore</code></td></tr>
       <tr><td><b>psycopg</b></td><td class="num">3.3.6</td><td><code>PgVectorStore</code></td><td>Postgres 드라이버</td></tr>
       <tr><td><b>sentence-transformers</b> · multilingual-e5-small</td><td class="num">6.1.0</td><td><code>embeddings.py</code></td><td>한국어 지원, 384차원으로 노트북에서 빠름. <code>query:</code>/<code>passage:</code> 접두어 규칙 준수</td></tr>
       <tr><td><b>NumPy</b></td><td class="num">2.5.4</td><td><code>calibration.py</code> <code>store.py</code></td><td>최소제곱(<code>lstsq</code>)으로 공수 계수 보정, 메모리 저장소 벡터 연산</td></tr>
-      <tr><td><b>decimal</b> (표준)</td><td class="num">—</td><td><code>quote.py</code> <code>calibration.py</code></td><td>금액 계산의 부동소수 오차 제거 (실제로 978,890,000÷1.1 이 889,899,999원 되던 버그를 잡음)</td></tr>
-      <tr><td><b>re</b> (표준)</td><td class="num">—</td><td><code>intake.py</code></td><td>키 없이 동작하는 규칙 기반 조건 추출 ("두 달", "8주", "1억 5천", "고려대")</td></tr>
-      <tr><td><b>pytest</b> + httpx(TestClient)</td><td class="num">9.1.1 · 0.28.1</td><td><code>tests/</code></td><td>FakeEmbedder·MemoryStore·LLM_PROVIDER=none 으로 DB·네트워크·키 없이 64개 실행</td></tr>
+      <tr><td><b>decimal</b> · <b>statistics</b> (표준)</td><td class="num">—</td><td><code>quote.py</code> <code>rag_quote.py</code></td><td>금액 부동소수 오차 제거 (978,890,000÷1.1 이 889,899,999원 되던 버그), 사례 중앙값</td></tr>
+      <tr><td><b>re</b> (표준)</td><td class="num">—</td><td><code>intake.py</code> <code>rag_quote.py</code></td><td>키 없이 동작하는 조건 추출 ("두 달", "1억 5천"), RFP <code>##</code> 조항 분할</td></tr>
+      <tr><td><b>anthropic</b> SDK</td><td class="num">1.13.0</td><td><code>llm.py</code></td><td><span class="tag on">사용</span> 입력 해석(<code>messages.parse</code> 구조화 출력) · ③ 과업 수행 내용 문장 (Claude). SDK 1.x 는 <code>temperature</code> 미지원이라 제거</td></tr>
+      <tr><td><b>httpx</b></td><td class="num">0.28.1</td><td><code>llm.py</code> · <code>tests/</code></td><td>Ollama 로컬 모델 호출(키 불필요, <code>/api/generate</code>) · FastAPI TestClient</td></tr>
+      <tr><td><b>pytest</b></td><td class="num">9.1.1</td><td><code>tests/</code></td><td>FakeEmbedder·MemoryStore·LLM_PROVIDER=none·QUOTE_RAG=0·EXTRACTOR=regex 로 DB·네트워크·키 없이 81개 실행 (LLM 해석은 가짜 응답 주입)</td></tr>
       <tr><td><b>spec-kit</b> (specify CLI)</td><td class="num">1.2.2.dev0</td><td><code>.specify/</code> <code>specs/</code></td><td>SDD: constitution → spec → plan → tasks → implement, 설계 변경은 spec Amendment 로 기록</td></tr>
-      <tr><td><b>anthropic</b> · <b>openai</b> SDK</td><td class="num">1.13.0 · 3.31.0</td><td><code>llm.py</code></td><td><span class="tag off">미사용</span> 키가 없어 호출 0회. 교체 지점에 연결 예정</td></tr>
+      <tr><td><b>openai</b> SDK</td><td class="num">3.31.0</td><td><code>llm.py</code></td><td><span class="tag off">미사용</span> 공급자 교체 지점으로만 남겨 둠</td></tr>
     </table>
     </div>
   </section>
 
-  <!-- 5. 분석 포인트 -->
+  <!-- 6. 분석 포인트 -->
   <section>
-    <h2><span class="num">5</span>분석 포인트</h2>
+    <h2><span class="num">6</span>분석 포인트</h2>
     <div class="grid2">
       <div class="point">
         <h3>숫자는 어디서 만들어지나</h3>
         <ul>
           <li>금액·공수·할증·VAT는 <code>quote.py</code> 순수 함수에서만</li>
-          <li>렌더러·검색·LLM은 숫자를 만들지 않음 → 견적서 숫자 = <code>estimate()</code> 결과를 테스트로 고정</li>
+          <li>검색은 사례·조항·문단을 고르기만, LLM은 해석·③ 문장만 → 금액을 만들지 않음</li>
+          <li>사례 기반 범위도 정형 <code>cases.jsonl</code> 금액에서 코드가 계산</li>
           <li>문서(<code>modules.md</code>)와 코드 상수가 다르면 테스트 실패</li>
         </ul>
       </div>
       <div class="point">
-        <h3>LLM 교체 지점 2곳</h3>
+        <h3>LLM: 쓰는 곳 2 + 교체 지점 1 — 모두 검증 뒤에</h3>
         <ul>
-          <li><code>RulePlanner.next_action(state)</code> → LLM tool-use 플래너</li>
-          <li><code>intake.extract(text)</code> → LLM 조건 추출 (구조화만)</li>
-          <li>두 곳 모두 금액 계산과 분리되어 있어 바꿔도 숫자는 그대로</li>
+          <li><b>입력 해석</b> <code>understand()</code>: "300분 정도", "석 달", "로드맵은 빼줘" → 값마다 원문 구절을 받아 <b>구절 존재·숫자 일치</b>를 코드가 검사, 어긋나면 버리고 되묻기, 숫자 없는 해석은 "이렇게 이해했어요"로 되보여 줌</li>
+          <li><b>③ 문장</b> <code>draft_narrative</code>: [n] 인용 문단, <code>check_citations</code> 로 검증</li>
+          <li><b>교체 지점</b>: <code>RulePlanner.next_action(state)</code> → tool-use 플래너</li>
+          <li>모두 금액 계산과 분리 → 바꿔도 숫자는 그대로, 실패하면 정규식·발췌로 폴백</li>
         </ul>
       </div>
       <div class="point">
-        <h3>실제 데이터 vs 가정값</h3>
+        <h3>데이터 경계: 실제 · 가정 · 가상</h3>
         <ul>
-          <li><b>실제</b>: <code>cases.csv</code> 입찰공고 8건 (약식 0.27~0.9억 / 전사 4.5~8.9억), KOSA 2026 임금</li>
-          <li><b>가정</b>: 단가표, 공수 계수, 할증률, 최대 8명, 서울대 기준 조건</li>
+          <li><span class="tag real">실제</span> <code>cases.csv</code> 입찰공고 8건 (약식 0.27~0.9억 / 전사 4.5~8.9억), KOSA 2026 임금</li>
+          <li><span class="tag assume">가정</span> 단가표, 공수 계수, 할증률, 최대 8명, 서울대 기준 조건, √ 규모 보정</li>
+          <li><span class="tag mock">가상</span> <code>mock/</code> 사례 30건 · RFP 3건 · 제안서 문단 — RAG 동작 시연용</li>
           <li>교수 수 확인 사례 1건 → 계수 보정 불가 → 모든 견적 <code>review.required</code></li>
         </ul>
       </div>
       <div class="point">
-        <h3>하이브리드 검색의 현재 역할</h3>
+        <h3>하이브리드 검색 — 이제 측정값이 있다</h3>
         <ul>
-          <li>템플릿 재사용. 지금은 근거 문서 출처 표시용, 금액에 영향 없음</li>
-          <li>필요해지는 시점: RFP 업로드(정확한 문구·숫자), 사례 수백 건 유사 검색(ISP/ISMP 약어), 공고번호 조회</li>
-          <li>한국어 조사 문제(Postgres <code>simple</code>) → 측정 후 n-gram 도입</li>
+          <li>유사 사례 검색 (e5, 질의 8개): MRR <b>hybrid 0.65</b> &gt; keyword 0.62 &gt; vector 0.51 → 첫 순위 정확도는 하이브리드가 가장 좋음</li>
+          <li>Recall@5 는 셋 다 0.29~0.34 로 낮음 (정답: 범위 자카드 ≥ 0.5, 가상 데이터, 표본 작음)</li>
+          <li>RFP 조항(정확한 문구·숫자)과 ISP/ISMP 같은 약어에서 키워드 쪽이 보완</li>
         </ul>
       </div>
     </div>
 
-    <h3 style="margin:20px 0 4px;font-size:15px">테스트 분포 (총 64개)</h3>
+    <h3 style="margin:20px 0 4px;font-size:15px">테스트 분포 (총 81개)</h3>
     <div class="bars">
       <div class="bar"><span>test_quote.py</span><div class="track"><div class="fill" style="width:100%"></div></div><span class="n">25</span></div>
       <div class="bar"><span>test_chat.py</span><div class="track"><div class="fill" style="width:60%"></div></div><span class="n">15</span></div>
       <div class="bar"><span>test_calibration.py</span><div class="track"><div class="fill" style="width:44%"></div></div><span class="n">11</span></div>
+      <div class="bar"><span>test_understand.py</span><div class="track"><div class="fill" style="width:36%;background:var(--warn)"></div></div><span class="n">9</span></div>
+      <div class="bar"><span>test_rag_quote.py</span><div class="track"><div class="fill" style="width:32%;background:var(--teal)"></div></div><span class="n">8</span></div>
       <div class="bar"><span>test_api.py (템플릿)</span><div class="track"><div class="fill" style="width:32%"></div></div><span class="n">8</span></div>
       <div class="bar"><span>test_core.py (템플릿)</span><div class="track"><div class="fill" style="width:20%"></div></div><span class="n">5</span></div>
     </div>
   </section>
 
-  <!-- 6. 한계 -->
+  <!-- 7. 한계 -->
   <section>
-    <h2><span class="num">6</span>한계와 다음 단계</h2>
+    <h2><span class="num">7</span>한계와 다음 단계</h2>
     <table>
       <tr><th>한계</th><th>다음 단계</th></tr>
       <tr><td>공수 계수가 가정값 (교수 수 확인 사례 1건)</td><td>대학알리미 전임교원 수 확보 → <code>calibrate()</code> 로 보정, LOO 오차로 확신도 판단</td></tr>
+      <tr><td>RAG 데이터가 <span class="tag mock">가상</span> (사례 30·RFP 3·제안서 문단) — −62% 차이도 가상 사례 기준</td><td>실제 수행 사례·제안서·RFP 원문 적재, 같은 <code>eval_cases.py</code> 로 재측정</td></tr>
+      <tr><td>사례 규모 보정 √(교수 수 비율)은 근거 없는 가정</td><td>실제 사례가 쌓이면 보정식을 회귀로 추정, 교차검증 허용폭(±25%)도 데이터로 조정</td></tr>
+      <tr><td>유사 사례 재현율 낮음 (Recall@5 ≈ 0.3), 질의 8개·가상 정답 라벨</td><td>질의셋 확대, 범위 메타 필터 + 재순위, 한국어 n-gram 키워드 검토</td></tr>
+      <tr><td>③ 과업 수행 내용은 프롬프트로 "숫자 금지"만 지시, 인용 번호 존재만 검증</td><td>담당자 검토 필수 표시 유지, 문장-출처 일치 검사·숫자 검출 가드 추가</td></tr>
       <tr><td>공고 예산 ≠ 낙찰 금액, 재가공 사이트 값</td><td>나라장터 원문 대조, 낙찰 결과 수집</td></tr>
-      <tr><td>규칙 기반 추출, 범위 정정 미지원 (키·결제·로컬 모델 설치를 과제 중 확인 불가)</td><td>입구에 판단 모델(Jev·Laya: 의도·범위 확률·가드레일) + 숫자는 정규식 유지 + 키 확보 시 LLM 구조화 추출(검증·폴백)</td></tr>
-      <tr><td>예산 대안이 최적해 아님 (카탈로그 순)</td><td>범위 조합 탐색(모듈 5개 → 31가지)으로 예산 내 최대 범위</td></tr>
-      <tr><td>세션이 메모리에만 존재</td><td>견적 저장·이력, 담당자 승인 워크플로</td></tr>
+      <tr><td>LLM 해석: 채팅마다 호출(1~3초·비용), "석 달"처럼 숫자 없는 해석은 사용자 확인에 의존</td><td>짧은·명확한 입력은 정규식 먼저 시도 후 필요할 때만 LLM, 입구 가드레일(판단 모델) 추가</td></tr>
+      <tr><td>예산 대안이 최적해 아님, 세션이 메모리에만 존재</td><td>범위 조합 탐색(31가지), 견적 저장·이력·담당자 승인 워크플로</td></tr>
     </table>
   </section>
 
-  <footer>저장소: github.com/mkkim68/inspire-interview · 해결 과정: docs/PROCESS.md · 설계: specs/001-pi-quote-agent/</footer>
+  <footer>저장소: github.com/mkkim68/inspire-interview · 브랜치: rag-quote · 해결 과정: docs/PROCESS.md · 설계: specs/001-pi-quote-agent/</footer>
 </main>
 </body>
 </html>
