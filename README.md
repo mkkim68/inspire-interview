@@ -14,7 +14,7 @@ conda activate interview
 cd ~/Desktop/interview/interview-starter
 pip install -r requirements.txt
 docker compose up -d db          # 없으면 .env 의 DATABASE_URL 을 비워 메모리 저장소로 실행
-python -m pytest -q              # → 64 passed (DB·네트워크·키 없이 동작)
+python -m pytest -q              # → 72 passed (DB·네트워크·키 없이 동작)
 uvicorn app.main:app --reload    # → http://localhost:8000/
 ```
 
@@ -53,6 +53,18 @@ uvicorn app.main:app --reload    # → http://localhost:8000/
 ```
 
 직접 입력 폼(`POST /quote`)도 그대로 있어요. 범위 키: `planning`(연구기획) `award`(과제수주) `funding`(연구비 관리) `outcome`(성과 활용) `roadmap`(차세대 시스템·로드맵). 공통 과업(현황 분석·To-Be 설계·사업관리)은 항상 포함.
+
+## 견적 RAG (브랜치 `rag-quote`, 목데이터)
+
+`.env` 에 `QUOTE_RAG=1` 을 넣으면 검색 결과가 견적에 실제로 쓰여요 (데이터: `data/quote/mock/` 가상 데이터).
+
+| RAG | 무엇을 검색 | 검색 결과가 쓰이는 곳 | 숫자는 |
+|---|---|---|---|
+| ① 유사 사례 | 가상 사례 30건의 사업명·과업 범위 | 사례 기반 금액 범위 → 공식 금액과 ±25% 교차검증 | 정형 데이터(cases.jsonl) + 코드 |
+| ② RFP 조항 (`POST /rfp`, 화면 버튼) | RFP의 사업기간·예산·범위·기타 조항 | 견적 조건 자동 채우기 | 정규식 추출 |
+| ③ 과업 수행 내용 | 과거 제안서 문단 | LLM이 [n] 인용 붙여 서술, 인용 검증 | 쓰지 않음 |
+
+LLM: `LLM_PROVIDER=anthropic`(키) / `ollama`(로컬, 키 불필요) / `none`(발췌형). 검색 품질은 `python -m scripts.eval_cases --k 5` (e5 기준 hybrid MRR 0.65 / Recall@5 0.32).
 
 ## 기술 선택과 이유
 
