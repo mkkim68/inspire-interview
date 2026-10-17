@@ -11,6 +11,7 @@ from .agent import run_agent
 from .chunking import make_chunks
 from .config import settings
 from .embeddings import get_embedder
+from .intake import ChatSession, reply
 from .quote import QuoteRequest
 from .retrieval import hybrid_search
 from .store import MemoryStore, PgVectorStore
@@ -95,6 +96,20 @@ class QuoteReq(BaseModel):
 @app.post("/quote")
 def quote(req: QuoteReq):
     return run_agent(QuoteRequest(**req.model_dump()), get_store(), get_embedder())
+
+
+class ChatReq(BaseModel):
+    session_id: str = "default"
+    message: str
+
+
+SESSIONS: dict[str, ChatSession] = {}   # 데모용 메모리 세션 (서버 재시작 시 사라짐)
+
+
+@app.post("/chat")
+def chat(req: ChatReq):
+    session = SESSIONS.setdefault(req.session_id, ChatSession())
+    return reply(session, req.message, get_store(), get_embedder())
 
 
 @app.get("/", response_class=HTMLResponse)

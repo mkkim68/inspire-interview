@@ -71,3 +71,11 @@
 - [X] T022 [US6] compare_case, 분기 플래너, 도구 추가 in app/agent.py
 - [X] T023 근거 문서 갱신 (공수 산정식, 기간·할증 규칙, 서울대 비교 조건) in data/quote/*.md
 - [X] T024 화면: 교수 수·연구자 수·기간 입력, 대안 카드, 사례 비교 in app/static/index.html
+
+## Phase 8: Amendment v4 — 대화형 접수 (US7–US8)
+
+- [ ] T025 [US7] 테스트 먼저: 추출(대학 약칭, 교수·연구자 수, 개월/주/두 달, 범위 키워드, '최대' 오인 방지) in tests/test_chat.py
+- [ ] T026 [US7] 테스트 먼저: 다턴 대화 /chat (되묻기 → 견적 214,544,000), 처음부터 다시 in tests/test_chat.py
+- [ ] T027 [US8] 테스트 먼저: 반영 안 된 조건 수집·검토 사유 반영 in tests/test_chat.py
+- [ ] T028 [US7] extract / ChatSession / reply in app/intake.py, POST /chat in app/main.py
+- [ ] T029 [US7] 채팅 화면 in app/static/index.html
