@@ -2,6 +2,7 @@
 키가 없으면 RulePlanner(규칙 기반 분기). LLM 플래너도 next_action(state) 만 구현하면 교체할 수 있다."""
 from pathlib import Path
 
+from .calibration import evidence
 from .chunking import make_chunks
 from .config import settings
 from .quote import (CASE_SOURCE, MAX_TEAM, RATE_SOURCE, REFERENCE_CASE, QuoteRequest, compare, effort, estimate,
@@ -74,6 +75,16 @@ def compare_case(state, store, embedder) -> str:
     return f"{REFERENCE_CASE.university} 대비 공수 ×{r['total_mm']}, 기간 ×{r['months']}, 금액 ×{r['total']}"
 
 
+def check_evidence(state, store, embedder) -> str:
+    target = state.get("quote") or state["options"][0]["estimate"]
+    state["evidence"] = evidence(target["subtotal"])
+    ev = state["evidence"]
+    g = ev["groups"]
+    need = "검토 필요" if ev["review"]["required"] else "검토 불필요"
+    return (f"실제 사례 {g['small']['n'] + g['enterprise']['n']}건과 비교: 위치 {ev['position']}, "
+            f"확신도 {ev['confidence']} → {need}")
+
+
 def _items_table(q: dict) -> list[str]:
     rows = ["| 과업 | 공수(MM) | 금액(원) | 출처 |", "|---|---:|---:|---|"]
     rows += [f"| {i['name']} | {i['mm']} | {i['amount']:,} | {i['source']} |" for i in q["items"]]
@@ -103,11 +114,23 @@ def render_quote(state, store, embedder) -> str:
             lines.append(f"- {o['label']}: 공수 {e['total_mm']}MM, 할증 ×{e['schedule']['premium']}, 합계 {won(e['total'])}")
     r = state["comparison"]["ratios"]
     basis = "" if s["feasible"] else ", 대안 A 기준"
-    lines += ["", f"## {case.university} 사례 대비 (출처: {CASE_SOURCE}{basis})",
+    lines += ["", f"## {case.university} 기준 조건 대비 — 설명용 비교, 검증 아님 (출처: {CASE_SOURCE}{basis})",
               f"- 기준: 교수 {case.professors}명, 연구자 {case.researchers}명, {case.months}개월, 전체 범위 → "
               f"{state['case']['total_mm']}MM, {won(state['case']['total'])}",
               f"- 교수 ×{r['professors']}, 연구자 ×{r['researchers']} → 공수 ×{r['total_mm']}; "
               f"기간 ×{r['months']} → 금액 ×{r['total']}", ""]
+    ev = state["evidence"]
+    lines += ["## 실제 사례 근거 (공개 입찰공고, 금액은 VAT 제외)"]
+    for g in ev["groups"].values():
+        if g["n"]:
+            lines.append(f"- {g['name']} {g['n']}건: {won(g['min'])} ~ {won(g['max'])}")
+            lines += [f"  - {c['university']}: {won(c['price'])}" + (" (VAT 포함액 ÷1.1)" if c["price_derived"] else "")
+                      + (f", {c['months']:g}개월" if c["months"] else "") + f" [{c['verification']}] {c['source_url']}"
+                      for c in g["cases"]]
+    if ev["review"]["required"]:
+        lines += ["", "**⚠ 담당자 검토 필요** (확신도: " + ev["confidence"] + ")"]
+        lines += [f"- {r}" for r in ev["review"]["reasons"]]
+    lines.append("")
     sources = sorted({d["source"] for d in state["refs"]})
     lines.append(f"근거 문서: {', '.join(sources)}" if sources else "⚠ 검색된 근거 문서가 없습니다.")
     lines.append(SAMPLE_NOTICE)
@@ -117,11 +140,11 @@ def render_quote(state, store, embedder) -> str:
 
 TOOLS = {"search_refs": search_refs, "estimate_effort": estimate_effort, "check_schedule": check_schedule,
          "propose_options": tool_propose_options, "price": price, "compare_case": compare_case,
-         "render_quote": render_quote}
+         "check_evidence": check_evidence, "render_quote": render_quote}
 
 
 class RulePlanner:
-    """근거 → 공수 → 일정 판단 → (가능: 가격 / 불가: 대안) → 사례 비교 → 견적서."""
+    """근거 → 공수 → 일정 판단 → (가능: 가격 / 불가: 대안) → 기준 조건 비교 → 실제 사례 근거 → 견적서."""
 
     def next_action(self, state) -> str | None:
         if "refs" not in state:
@@ -136,6 +159,8 @@ class RulePlanner:
             return "propose_options"
         if "comparison" not in state:
             return "compare_case"
+        if "evidence" not in state:
+            return "check_evidence"
         if "markdown" not in state:
             return "render_quote"
         return None
@@ -143,7 +168,7 @@ class RulePlanner:
 
 def run_agent(req: QuoteRequest, store, embedder, planner=None, max_steps: int = 10) -> dict:
     result = {"status": "ok", "questions": [], "quote": None, "options": [], "comparison": None,
-              "schedule": None, "quote_markdown": "", "sources": [], "trace": []}
+              "schedule": None, "evidence": None, "review": None, "quote_markdown": "", "sources": [], "trace": []}
     questions = validate(req)
     if questions:
         return {**result, "status": "needs_info", "questions": questions}
@@ -155,6 +180,7 @@ def run_agent(req: QuoteRequest, store, embedder, planner=None, max_steps: int =
             return {**result, "status": "ok" if state["schedule"]["feasible"] else "infeasible",
                     "quote": state.get("quote"), "options": state.get("options", []),
                     "comparison": state["comparison"], "schedule": state["schedule"],
+                    "evidence": state["evidence"], "review": state["evidence"]["review"],
                     "quote_markdown": state["markdown"],
                     "sources": [{"source": d["source"], "chunk_id": d["chunk_id"]} for d in state["refs"]]}
         if tool not in TOOLS:

@@ -104,7 +104,8 @@ def test_agent_ok_path_trace_and_numbers():
     res = _run(KOREA_2M)
     assert res["status"] == "ok"
     assert [t["tool"] for t in res["trace"]] == \
-        ["search_refs", "estimate_effort", "check_schedule", "price", "compare_case", "render_quote"]
+        ["search_refs", "estimate_effort", "check_schedule", "price", "compare_case", "check_evidence",
+         "render_quote"]
     assert res["quote"] == estimate(KOREA_2M)
     md = res["quote_markdown"]
     for n in (res["quote"]["base"], res["quote"]["surcharge"], res["quote"]["vat"], res["quote"]["total"]):
@@ -181,3 +182,13 @@ def test_quote_api_infeasible(client):
 def test_index_page(client):
     r = client.get("/")
     assert r.status_code == 200 and "/quote" in r.text and "months" in r.text
+
+
+# --- 근거 상태 표시 (실제 사례) ---
+
+def test_quote_shows_evidence_and_requires_review():
+    res = _run(KOREA_2M)
+    assert res["review"]["required"] is True and res["review"]["reasons"]
+    assert res["evidence"]["groups"]["enterprise"]["n"] == 5
+    md = res["quote_markdown"]
+    assert "담당자 검토 필요" in md and "검증 아님" in md and "동의대학교" in md

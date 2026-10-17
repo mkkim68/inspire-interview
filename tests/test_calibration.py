@@ -52,3 +52,32 @@ def test_load_cases_skips_unverified_rows(tmp_path):
                  "A대,500000000,1000,6\nB대,,800,5\nC대,300000000,,4\n", encoding="utf-8")
     rows = load_cases(p)
     assert [r["university"] for r in rows] == ["A대"] and rows[0]["months"] == 6.0
+
+
+# --- 실제 사례 근거 (data/quote/cases.csv 공개 입찰공고) ---
+
+from app.calibration import case_groups, evidence, load_reference_cases  # noqa: E402
+
+
+def test_reference_cases_convert_vat_and_skip_duplicates():
+    rows = load_reference_cases()
+    deu = next(r for r in rows if r["university"] == "동의대학교")
+    assert deu["price"] == 863_636_363 and deu["price_derived"] is True     # 950,000,000 ÷ 1.1
+    knou = next(r for r in rows if r["university"] == "한국방송통신대학교")
+    assert knou["price"] == 889_900_000                                    # 978,890,000 ÷ 1.1 (float 오차 없이)
+    assert sum(r["university"] == "경북대학교" for r in rows) == 1            # 재공고 중복 제외
+    assert all(r["source_url"].startswith("http") for r in rows)
+
+
+def test_case_groups_split_by_scope():
+    g = case_groups(load_reference_cases())
+    assert g["small"]["n"] == 3 and g["enterprise"]["n"] == 5
+    assert g["small"]["max"] < g["enterprise"]["min"]
+
+
+def test_evidence_flags_review_when_data_is_thin():
+    ev = evidence(195_040_000, scope_keyword="연구행정")
+    assert ev["confidence"] == "low"
+    assert ev["position"] == "between"            # 약식 그룹 최대 < 1.95억 < 전사 그룹 최소
+    assert ev["scope_cases"] == 0
+    assert ev["review"]["required"] and len(ev["review"]["reasons"]) >= 2

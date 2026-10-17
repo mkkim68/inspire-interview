@@ -5,6 +5,7 @@
   확신도: 사례 수와 LOO 평균 절대 오차율(MAPE)로 판단. 낮으면 사람 검토 필요.
 """
 import csv
+from decimal import Decimal
 from pathlib import Path
 
 import numpy as np
@@ -74,3 +75,64 @@ def predict(cal: dict, professors: int, rate: int) -> dict | None:
     price = int(mm * rate)
     m = cal["mape"]
     return {"mm": round(mm, 2), "price": price, "low": int(price * (1 - m)), "high": int(price * (1 + m))}
+
+
+# --- 실제 사례 근거: 계수를 맞출 만큼 데이터가 없을 때 "어디쯤인지"와 "검토 필요"를 보여준다 ---
+
+GROUP_NAMES = {"small": "약식·부분 범위 ISP", "enterprise": "전사·차세대 ISP/ISMP"}
+
+
+def load_reference_cases(path: Path = CASES_PATH) -> list[dict]:
+    """금액이 확인된 사례 전부 (중복 공고 include=0 제외). VAT 포함 금액만 있으면 ÷1.1 로 환산하고 표시."""
+    if not path.exists():
+        return []
+    rows = []
+    with path.open(encoding="utf-8") as f:
+        for r in csv.DictReader(f):
+            if r.get("include") == "0":
+                continue
+            if r.get("estimated_price_vat_excl"):
+                price, derived = int(r["estimated_price_vat_excl"]), False
+            elif r.get("budget_vat_incl"):
+                price, derived = int(Decimal(r["budget_vat_incl"]) / Decimal("1.1")), True   # float 오차 방지
+            else:
+                continue
+            rows.append({**r, "price": price, "price_derived": derived,
+                         "months": float(r["months"]) if r.get("months") else None})
+    return rows
+
+
+def case_groups(cases: list[dict]) -> dict:
+    groups = {}
+    for key, name in GROUP_NAMES.items():
+        g = [c for c in cases if c.get("scope_group") == key]
+        prices = [c["price"] for c in g]
+        groups[key] = {"name": name, "n": len(g), "min": min(prices, default=None), "max": max(prices, default=None),
+                       "cases": [{k: c[k] for k in ("university", "project_name", "price", "price_derived", "months",
+                                                     "verification", "source_url")} for c in g]}
+    return groups
+
+
+def evidence(formula_price: int, scope_keyword: str = "연구행정", rate: int | None = None) -> dict:
+    """공식 금액(VAT 제외)을 실제 사례 그룹과 비교하고, 사람 검토가 필요한지 판단한다."""
+    from .quote import BLENDED_RATE
+    refs = load_reference_cases()
+    groups = case_groups(refs)
+    cal = calibrate(load_cases(), rate or BLENDED_RATE)
+    small, ent = groups["small"], groups["enterprise"]
+    if small["max"] is not None and formula_price <= small["max"]:
+        position = "small"
+    elif ent["min"] is not None and formula_price >= ent["min"]:
+        position = "enterprise"
+    else:
+        position = "between"
+    scope_cases = sum(scope_keyword in c.get("scope_keywords", "") for c in refs)
+    reasons = []
+    if cal["confidence"] == "low":
+        reasons.append(f"계수 보정 확신도 낮음 — {cal['reason']}")
+    if scope_cases == 0:
+        reasons.append(f"'{scope_keyword}' 범위를 명시한 실제 사례 0건 (서울대 사례는 금액 비공개)")
+    if position == "between":
+        reasons.append("공식 금액이 실제 사례 그룹(약식·부분 / 전사·차세대) 사이에 있어 어느 쪽에도 근거가 없음")
+    return {"calibration": cal, "groups": groups, "position": position, "scope_cases": scope_cases,
+            "confidence": cal["confidence"], "review": {"required": bool(reasons), "reasons": reasons}}

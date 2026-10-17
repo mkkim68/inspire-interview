@@ -29,6 +29,10 @@
   .fact { background:#f6f6f8; border-radius:8px; padding:10px; }
   .fact b { display:block; font-size:17px; }
   .bad { border-left: 4px solid #b3261e; }
+  .review { background:#fff4e5; border:1px solid #f0c27b; border-radius:8px; padding:10px 12px; margin: 8px 0 12px; }
+  .review ul { margin: 6px 0 0; padding-left: 18px; }
+  h3 { font-size: 15px; margin: 16px 0 4px; }
+  a { color: var(--accent); }
   .option { border:1px solid var(--line); border-radius:8px; padding:12px; margin:8px 0; }
   .demo { margin-top: 8px; font-size: 13px; }
   .demo button { margin: 4px 6px 0 0; padding:6px 10px; font-size:13px; background:#fff; color:var(--fg); border:1px solid var(--line); }
@@ -91,6 +95,21 @@ function itemsTable(q) {
   </table>`;
 }
 
+function evidenceSection(res) {
+  const ev = res.evidence, rv = res.review;
+  const groups = Object.values(ev.groups).filter(g => g.n).map(g => `
+    <h3>${esc(g.name)} ${g.n}건 · ${won(g.min)} ~ ${won(g.max)}</h3>
+    <table><tr><th>대학</th><th class="num">금액(VAT 제외)</th><th class="num">기간</th><th>확인 수준</th></tr>
+    ${g.cases.map(c => `<tr><td><a href="${esc(c.source_url)}" target="_blank" rel="noopener">${esc(c.university)}</a></td>
+      <td class="num">${won(c.price)}${c.price_derived ? " *" : ""}</td><td class="num">${c.months ? c.months + "개월" : "-"}</td>
+      <td>${esc(c.verification)}</td></tr>`).join("")}</table>`).join("");
+  const review = rv.required
+    ? `<div class="review"><b>⚠ 담당자 검토 필요</b> (확신도: ${esc(ev.confidence)})<ul>${rv.reasons.map(r => `<li>${esc(r)}</li>`).join("")}</ul></div>`
+    : `<div class="muted">근거 충분 (확신도: ${esc(ev.confidence)})</div>`;
+  return `<section><h2>실제 사례 근거 <span class="muted">(공개 입찰공고)</span></h2>${review}${groups}
+    <div class="muted">* VAT 포함 금액만 공개된 건은 ÷1.1 로 환산. 입찰 예산이며 실제 낙찰 금액과 다를 수 있음.</div></section>`;
+}
+
 $("f").addEventListener("submit", async e => {
   e.preventDefault();
   const body = {
@@ -123,7 +142,7 @@ $("f").addEventListener("submit", async e => {
             ${itemsTable(o.estimate)}</div>`).join("")}</section>`;
   const sources = [...new Set(res.sources.map(x => x.source))];
   out.innerHTML = main + `
-    <section><h2>서울대 사례 대비</h2>
+    <section><h2>서울대 기준 조건 대비 <span class="muted">(설명용 비교, 검증 아님)</span></h2>
       <div class="facts">
         <div class="fact"><span class="muted">교수</span><b>×${c.professors}</b></div>
         <div class="fact"><span class="muted">연구자</span><b>×${c.researchers}</b></div>
@@ -135,6 +154,7 @@ $("f").addEventListener("submit", async e => {
       <div class="muted">${sources.length ? "근거 문서: " + sources.map(esc).join(", ") : '<span class="warn">검색된 근거 문서가 없습니다.</span>'}</div>
       <div class="muted">※ 단가·공수·사례 조건은 샘플 가정값이며 실제 계약 금액이 아닙니다.</div>
     </section>
+    ${evidenceSection(res)}
     <section><h2>에이전트 처리 기록</h2>
       <ol class="trace">${res.trace.map(t => `<li><code>${esc(t.tool)}</code> — ${esc(t.summary)}</li>`).join("")}</ol>
     </section>`;
