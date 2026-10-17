@@ -60,3 +60,14 @@
 
 - MVP = US1 까지 (T001–T010). 끝나면 커밋·시연 가능.
 - 이후 US2 → US3 → Polish 순서로 스토리마다 pytest 통과 후 커밋.
+
+## Phase 7: Amendment v2 — 규모·기간 기반 견적 (US4–US6)
+
+- [X] T017 [US4] 테스트 먼저: 서울대 11.0MM·할증 없음·합계 128,260,000 / 고려대 2개월 16.0MM·할증 1.15·합계 214,544,000, 단조성, 연구자 수 가정 표시 in tests/test_quote.py
+- [X] T018 [US5] 테스트 먼저: 고려대 1개월 → infeasible, 대안 A(2개월), 대안 B(planning+award, 8.0MM) in tests/test_quote.py
+- [X] T019 [US6] 테스트 먼저: 서울대 대비 공수 1.45배·금액 1.67배, trace 분기(불가 시 propose_options, 가능 시 price) in tests/test_quote.py
+- [X] T020 [US4] 모듈별 고정·교수당·연구자당 공수, effort/schedule/estimate, 사례 상수 in app/quote.py
+- [X] T021 [US5] propose_options in app/quote.py
+- [X] T022 [US6] compare_case, 분기 플래너, 도구 추가 in app/agent.py
+- [X] T023 근거 문서 갱신 (공수 산정식, 기간·할증 규칙, 서울대 비교 조건) in data/quote/*.md
+- [X] T024 화면: 교수 수·연구자 수·기간 입력, 대안 카드, 사례 비교 in app/static/index.html

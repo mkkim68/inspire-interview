@@ -80,21 +80,27 @@ python -m scripts.eval_retrieval --k 3
 ```bash
 uvicorn app.main:app --reload      # http://localhost:8000/  (입력 폼)
 curl -X POST localhost:8000/quote -H 'content-type: application/json' \
-  -d '{"university":"고려대학교","researchers":2000,"scopes":["funding","roadmap"]}'
-# → 합계 116,600,000원 (소계 106,000,000 + VAT 10,600,000)
+  -d '{"university":"고려대학교","professors":100,"researchers":500,"months":2,
+       "scopes":["planning","award","funding","outcome","roadmap"]}'
+# → 16.0MM, 8명 투입, 기간 할증 ×1.15, 합계 214,544,000원 (서울대 기준 대비 ×1.67)
+# months=1 이면 → status "infeasible" + 대안 A(2개월) / 대안 B(범위 축소)
 ```
 범위: `planning`(연구기획) `award`(과제수주) `funding`(연구비 관리) `outcome`(성과 활용) `roadmap`(차세대 시스템·로드맵).
-공통 과업(현황 분석·To-Be 설계·사업관리)은 항상 포함.
+공통 과업(현황 분석·To-Be 설계·사업관리)은 항상 포함. 연구자 수를 비우면 교수 수 × 5로 가정하고 견적서에 표시.
 
 ### 동작
 ```
-입력 검증 ─(누락)→ needs_info + 질문 목록
+입력(대학명·교수 수·연구자 수(선택)·기간·범위) ─(누락)→ needs_info + 질문 목록
    │
-RulePlanner 가 다음 도구 선택 (최대 6회)
-   ├ search_refs   data/quote 근거 문서를 적재(meta kind=quote_ref)하고 hybrid_search 로 검색
-   ├ estimate      app/quote.py 순수 함수로 공수·금액·VAT·합계 계산
-   └ render_quote  계산 결과를 그대로 견적서(마크다운)로 포맷
-→ quote, quote_markdown, sources, trace
+RulePlanner 가 상태를 보고 다음 도구 선택 (최대 10회, trace 기록)
+   ├ search_refs      data/quote 근거 문서 적재(meta kind=quote_ref) + hybrid_search
+   ├ estimate_effort  모듈별 공수 = 고정 + 교수 수×a + 연구자 수×b
+   ├ check_schedule   필요 인원 = 공수 ÷ 기간 → 할증 / 실행 불가 판단
+   ├ price            (가능) 공수 × 단가 + 할증 + VAT
+   ├ propose_options  (불가) 대안 A 최소 가능 기간 / 대안 B 기간 유지·범위 축소
+   ├ compare_case     서울대 기준 조건 대비 배율
+   └ render_quote     계산 결과를 그대로 견적서로 포맷
+→ status(ok|infeasible), quote, options, comparison, schedule, sources, trace
 ```
 
 ### 설계 원칙
@@ -104,6 +110,6 @@ RulePlanner 가 다음 도구 선택 (최대 6회)
 - **오프라인 동작**: LLM 키 없이 동작. 플래너는 `next_action(state)` 인터페이스라 LLM tool-use 플래너로 교체 가능.
 
 ### 한계
-- 단가·공수·규모 계수는 **샘플 가정값** (서울대 사례는 금액·기간 비공개). 실제 사내 단가표로 교체 필요.
+- 단가·공수 계수·할증률·서울대 기준 조건은 **샘플 가정값** (서울대 실제 금액·기간 비공개). 실제 수주 데이터로 계수를 보정해야 함.
 - 키가 없어 LLM 플래너·자연어 설명은 구현하지 않음 (RulePlanner 로 결정적 실행).
 - RFP 문서(PDF/HWP) 업로드, 견적 저장·이력, PDF 내보내기는 범위 밖.

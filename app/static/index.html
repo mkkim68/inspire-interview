@@ -24,18 +24,32 @@
   .warn { color: #b3261e; }
   ol.trace li { margin: 4px 0; }
   code { background:#f1f1f3; padding: 1px 4px; border-radius: 4px; }
+  .row { display:grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 12px; }
+  .facts { display:grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 8px; margin: 12px 0; }
+  .fact { background:#f6f6f8; border-radius:8px; padding:10px; }
+  .fact b { display:block; font-size:17px; }
+  .bad { border-left: 4px solid #b3261e; }
+  .option { border:1px solid var(--line); border-radius:8px; padding:12px; margin:8px 0; }
+  .demo { margin-top: 8px; font-size: 13px; }
+  .demo button { margin: 4px 6px 0 0; padding:6px 10px; font-size:13px; background:#fff; color:var(--fg); border:1px solid var(--line); }
 </style>
 </head>
 <body>
 <main>
   <h1>대학 연구행정 PI 견적 에이전트</h1>
-  <p class="sub">대학명·연구자 수·과업 범위를 입력하면 근거 검색 → 계산 → 견적서 작성 순서로 견적을 만듭니다.</p>
+  <p class="sub">대학명·교수 수·연구자 수·기간·범위를 입력하면 근거 검색 → 공수 산정 → 일정 판단 → (가격 또는 대안) → 서울대 사례 비교 순서로 견적을 만듭니다.</p>
 
   <form id="f">
     <label for="university">대학명</label>
     <input id="university" type="text" placeholder="예: 고려대학교">
-    <label for="researchers">연구자 수</label>
-    <input id="researchers" type="number" min="1" placeholder="예: 2000">
+    <div class="row">
+      <div><label for="professors">교수 수</label>
+        <input id="professors" type="number" min="1" placeholder="예: 100"></div>
+      <div><label for="researchers">연구자 수 (선택)</label>
+        <input id="researchers" type="number" min="1" placeholder="비우면 교수 × 5"></div>
+      <div><label for="months">기간 (개월)</label>
+        <input id="months" type="number" min="1" placeholder="예: 2"></div>
+    </div>
     <label>과업 범위 (공통 과업: 현황 분석·To-Be 설계·사업관리는 항상 포함)</label>
     <div class="scopes">
       <label><input type="checkbox" value="planning"> 연구기획</label>
@@ -45,6 +59,11 @@
       <label><input type="checkbox" value="roadmap"> 차세대 시스템 구축 방향·실행 로드맵</label>
     </div>
     <button type="submit">견적 받기</button>
+    <div class="demo muted">예시 채우기:
+      <button type="button" data-demo='["서울대학교",50,250,3]'>서울대 50명·3개월</button>
+      <button type="button" data-demo='["고려대학교",100,500,2]'>고려대 100명·2개월</button>
+      <button type="button" data-demo='["고려대학교",100,500,1]'>고려대 100명·1개월</button>
+    </div>
   </form>
 
   <div id="out"></div>
@@ -52,42 +71,71 @@
 <script>
 const won = n => n.toLocaleString("ko-KR") + "원";
 const esc = s => String(s).replace(/[&<>"]/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
+const num = id => { const v = document.getElementById(id).value; return v === "" ? null : Number(v); };
+const $ = id => document.getElementById(id);
 
-document.getElementById("f").addEventListener("submit", async e => {
+document.querySelectorAll("[data-demo]").forEach(b => b.addEventListener("click", () => {
+  const [u, p, r, m] = JSON.parse(b.dataset.demo);
+  $("university").value = u; $("professors").value = p; $("researchers").value = r; $("months").value = m;
+  document.querySelectorAll(".scopes input").forEach(i => i.checked = true);
+}));
+
+function itemsTable(q) {
+  return `<table>
+    <tr><th>과업</th><th class="num">공수(MM)</th><th class="num">금액</th><th>출처</th></tr>
+    ${q.items.map(i => `<tr><td>${esc(i.name)}</td><td class="num">${i.mm}</td><td class="num">${won(i.amount)}</td><td>${esc(i.source)}</td></tr>`).join("")}
+    <tr><td colspan="2">기본 금액</td><td class="num">${won(q.base)}</td><td></td></tr>
+    <tr><td colspan="2">기간 압축 할증 (×${q.schedule.premium})</td><td class="num">${won(q.surcharge)}</td><td></td></tr>
+    <tr><td colspan="2">부가세 (10%)</td><td class="num">${won(q.vat)}</td><td></td></tr>
+    <tr class="total"><td colspan="2">합계</td><td class="num">${won(q.total)}</td><td></td></tr>
+  </table>`;
+}
+
+$("f").addEventListener("submit", async e => {
   e.preventDefault();
-  const r = document.getElementById("researchers").value;
   const body = {
-    university: document.getElementById("university").value,
-    researchers: r === "" ? null : Number(r),
-    scopes: [...document.querySelectorAll(".scopes input:checked")].map(i => i.value),
+    university: $("university").value, professors: num("professors"), researchers: num("researchers"),
+    months: num("months"), scopes: [...document.querySelectorAll(".scopes input:checked")].map(i => i.value),
   };
-  const out = document.getElementById("out");
+  const out = $("out");
   out.innerHTML = '<section class="muted">견적 작성 중…</section>';
   const res = await (await fetch("/quote", {method: "POST", headers: {"content-type": "application/json"},
                                             body: JSON.stringify(body)})).json();
-  if (res.status !== "ok") {
+  if (res.status === "needs_info" || res.status === "error") {
     out.innerHTML = `<section><h2>${res.status === "needs_info" ? "추가 정보가 필요합니다" : "오류"}</h2>
       <ul>${res.questions.map(q => `<li>${esc(q)}</li>`).join("")}</ul></section>`;
     return;
   }
-  const q = res.quote;
-  const sources = [...new Set(res.sources.map(s => s.source))];
-  out.innerHTML = `
-    <section>
-      <h2>견적서 — ${esc(body.university)}</h2>
-      <div class="muted">연구자 ${body.researchers.toLocaleString("ko-KR")}명 · 규모 계수 ${q.factor} · 혼합 단가 ${won(q.rate)}/MM</div>
-      <table>
-        <tr><th>과업</th><th class="num">공수(MM)</th><th class="num">금액</th><th>출처</th></tr>
-        ${q.items.map(i => `<tr><td>${esc(i.name)}</td><td class="num">${i.mm}</td><td class="num">${won(i.amount)}</td><td>${esc(i.source)}</td></tr>`).join("")}
-        <tr><td colspan="2">소계</td><td class="num">${won(q.subtotal)}</td><td></td></tr>
-        <tr><td colspan="2">부가세 (10%)</td><td class="num">${won(q.vat)}</td><td></td></tr>
-        <tr class="total"><td colspan="2">합계</td><td class="num">${won(q.total)}</td><td></td></tr>
-      </table>
+  const s = res.schedule, c = res.comparison.ratios;
+  const facts = `<div class="facts">
+      <div class="fact"><span class="muted">필요 인원</span><b>${s.team}명</b></div>
+      <div class="fact"><span class="muted">표준 기간 (4명)</span><b>${s.std_months}개월</b></div>
+      <div class="fact"><span class="muted">기간 할증</span><b>${s.feasible ? "×" + s.premium : "해당 없음"}</b></div>
+      <div class="fact"><span class="muted">실행 가능</span><b>${s.feasible ? "가능" : "불가 (8명 초과)"}</b></div>
+    </div>`;
+  const main = res.status === "ok"
+    ? `<section><h2>견적서 — ${esc(body.university)}</h2>${facts}${itemsTable(res.quote)}
+         ${res.quote.researchers_assumed ? `<div class="muted">연구자 수 미입력 → 교수 수 × 5 = ${res.quote.researchers}명으로 가정</div>` : ""}</section>`
+    : `<section class="bad"><h2>요청 기간 ${body.months}개월로는 실행 불가</h2>${facts}
+         <p>최대 투입 인원 8명으로도 기간 안에 끝낼 수 없습니다. 아래 대안을 검토해 주세요.</p>
+         ${res.options.map(o => `<div class="option"><b>${esc(o.label)}</b> — 합계 ${won(o.estimate.total)}
+            <div class="muted">공수 ${o.estimate.total_mm}MM · 인원 ${o.estimate.schedule.team}명 · 할증 ×${o.estimate.schedule.premium}</div>
+            ${itemsTable(o.estimate)}</div>`).join("")}</section>`;
+  const sources = [...new Set(res.sources.map(x => x.source))];
+  out.innerHTML = main + `
+    <section><h2>서울대 사례 대비</h2>
+      <div class="facts">
+        <div class="fact"><span class="muted">교수</span><b>×${c.professors}</b></div>
+        <div class="fact"><span class="muted">연구자</span><b>×${c.researchers}</b></div>
+        <div class="fact"><span class="muted">공수</span><b>×${c.total_mm}</b></div>
+        <div class="fact"><span class="muted">기간</span><b>×${c.months}</b></div>
+        <div class="fact"><span class="muted">금액</span><b>×${c.total}</b></div>
+      </div>
+      <div class="muted">기준: 교수 50명 · 연구자 250명 · 3개월 · 전체 범위 (가정값)${res.status === "ok" ? "" : " — 대안 A 기준 비교"}</div>
       <div class="muted">${sources.length ? "근거 문서: " + sources.map(esc).join(", ") : '<span class="warn">검색된 근거 문서가 없습니다.</span>'}</div>
-      <div class="muted">※ 단가·공수는 샘플 가정값이며 실제 계약 금액이 아닙니다.</div>
+      <div class="muted">※ 단가·공수·사례 조건은 샘플 가정값이며 실제 계약 금액이 아닙니다.</div>
     </section>
-    <section>
-      <h2>에이전트 처리 기록</h2>
+    <section><h2>에이전트 처리 기록</h2>
       <ol class="trace">${res.trace.map(t => `<li><code>${esc(t.tool)}</code> — ${esc(t.summary)}</li>`).join("")}</ol>
     </section>`;
 });

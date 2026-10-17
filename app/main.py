@@ -86,7 +86,9 @@ def ask(req: SearchReq):
 
 class QuoteReq(BaseModel):
     university: str = ""
-    researchers: int | None = None
+    professors: int | None = None
+    researchers: int | None = None     # 비우면 교수 수 × 5 로 가정
+    months: int | None = None
     scopes: list[str] = Field(default_factory=list)
 
 

@@ -1,15 +1,16 @@
-"""견적 에이전트: 플래너가 다음 도구를 고르고, 루프가 실행하며 trace 를 남긴다.
-키가 없으면 RulePlanner(결정적 순서). LLM 플래너도 next_action(state) 만 구현하면 교체할 수 있다."""
+"""견적 에이전트: 플래너가 상태를 보고 다음 도구를 고르고, 루프가 실행하며 trace 를 남긴다.
+키가 없으면 RulePlanner(규칙 기반 분기). LLM 플래너도 next_action(state) 만 구현하면 교체할 수 있다."""
 from pathlib import Path
 
 from .chunking import make_chunks
 from .config import settings
-from .quote import RATE_SOURCE, QuoteRequest, estimate, validate
+from .quote import (CASE_SOURCE, MAX_TEAM, RATE_SOURCE, REFERENCE_CASE, QuoteRequest, compare, effort, estimate,
+                    propose_options, schedule, validate)
 from .retrieval import hybrid_search
 
 REF_DIR = Path(__file__).resolve().parent.parent / "data" / "quote"
 REF_FILTER = {"kind": "quote_ref"}
-SAMPLE_NOTICE = "※ 단가·공수는 샘플 가정값이며 실제 계약 금액이 아닙니다."
+SAMPLE_NOTICE = "※ 단가·공수·사례 조건은 샘플 가정값이며 실제 계약 금액이 아닙니다."
 
 
 def ensure_refs_loaded(store, embedder) -> int:
@@ -21,13 +22,17 @@ def ensure_refs_loaded(store, embedder) -> int:
     return store.add_chunks(chunks, embedder.embed_documents([c["content"] for c in chunks]))
 
 
+def won(n: int) -> str:
+    return f"{n:,}원"
+
+
 # --- 도구: (state, store, embedder) -> trace 에 남길 요약 문자열 ---
 
 def search_refs(state, store, embedder) -> str:
     ensure_refs_loaded(store, embedder)
     req = state["req"]
-    queries = ["연구행정 PI 과업 범위 사례", "컨설팅 단가 혼합 단가 부가세"] + \
-              [f"{s} 과업 기본 공수" for s in ["common"] + req.scopes]
+    queries = ["서울대 연구행정 PI 사례 조건", "컨설팅 단가 혼합 단가 부가세", "기간 압축 할증 투입 인원"] + \
+              [f"{s} 과업 공수 교수 연구자" for s in ["common"] + req.scopes]
     refs: dict[str, dict] = {}
     for q in queries:
         for d in hybrid_search(store, embedder, q, k=2, where=REF_FILTER):
@@ -36,19 +41,73 @@ def search_refs(state, store, embedder) -> str:
     return f"근거 {len(refs)}개 청크 검색 ({', '.join(sorted({d['source'] for d in refs.values()})) or '없음'})"
 
 
-def tool_estimate(state, store, embedder) -> str:
+def estimate_effort(state, store, embedder) -> str:
+    items, total_mm, researchers, assumed = effort(state["req"])
+    state["effort"] = {"total_mm": total_mm, "researchers": researchers, "assumed": assumed}
+    note = " (교수 수 × 5 가정)" if assumed else ""
+    return f"공수 {float(total_mm)}MM — 교수 {state['req'].professors}명, 연구자 {researchers}명{note}"
+
+
+def check_schedule(state, store, embedder) -> str:
+    s = schedule(state["effort"]["total_mm"], state["req"].months)
+    state["schedule"] = s
+    verdict = "가능" if s["feasible"] else f"불가 (최대 {MAX_TEAM}명 초과)"
+    return f"표준 {s['std_months']}개월, 요청 {state['req'].months}개월 → 필요 인원 {s['team']}명, 할증 ×{s['premium']}, {verdict}"
+
+
+def tool_propose_options(state, store, embedder) -> str:
+    state["options"] = propose_options(state["req"])
+    return " / ".join(f"{o['label']}: {won(o['estimate']['total'])}" for o in state["options"])
+
+
+def price(state, store, embedder) -> str:
     state["quote"] = estimate(state["req"])
-    return f"{len(state['quote']['items'])}개 항목, 합계 {state['quote']['total']:,}원"
+    q = state["quote"]
+    return f"기본 {won(q['base'])} + 할증 {won(q['surcharge'])} + VAT {won(q['vat'])} = {won(q['total'])}"
+
+
+def compare_case(state, store, embedder) -> str:
+    target = state.get("quote") or state["options"][0]["estimate"]   # 불가면 대안 A 와 비교
+    state["case"] = estimate(REFERENCE_CASE)
+    state["comparison"] = compare(target, state["case"])
+    r = state["comparison"]["ratios"]
+    return f"{REFERENCE_CASE.university} 대비 공수 ×{r['total_mm']}, 기간 ×{r['months']}, 금액 ×{r['total']}"
+
+
+def _items_table(q: dict) -> list[str]:
+    rows = ["| 과업 | 공수(MM) | 금액(원) | 출처 |", "|---|---:|---:|---|"]
+    rows += [f"| {i['name']} | {i['mm']} | {i['amount']:,} | {i['source']} |" for i in q["items"]]
+    return rows
 
 
 def render_quote(state, store, embedder) -> str:
-    req, q = state["req"], state["quote"]
+    req, s, case = state["req"], state["schedule"], REFERENCE_CASE
+    eff = state["effort"]
     lines = [f"# 견적서 — {req.university}", "",
-             f"- 연구자 수: {req.researchers:,}명 (규모 계수 {q['factor']})",
-             f"- 혼합 단가: {q['rate']:,}원/MM (출처: {RATE_SOURCE})", "",
-             "| 과업 | 공수(MM) | 금액(원) | 출처 |", "|---|---:|---:|---|"]
-    lines += [f"| {i['name']} | {i['mm']} | {i['amount']:,} | {i['source']} |" for i in q["items"]]
-    lines += ["", f"- 소계: {q['subtotal']:,}원", f"- 부가세(10%): {q['vat']:,}원", f"- **합계: {q['total']:,}원**", ""]
+             f"- 교수 {req.professors:,}명, 연구자 {eff['researchers']:,}명"
+             + (" (미입력 → 교수 수 × 5로 가정)" if eff["assumed"] else ""),
+             f"- 총 공수 {float(eff['total_mm'])}MM, 표준 기간 {s['std_months']}개월 (표준 4명 기준)",
+             f"- 요청 기간 {req.months}개월 → 필요 인원 {s['team']}명, "
+             + (f"기간 할증 ×{s['premium']}" if s["feasible"] else f"최대 {MAX_TEAM}명 초과로 실행 불가"),
+             f"- 혼합 단가 {won(state['case']['rate'])}/MM (출처: {RATE_SOURCE})", ""]
+    if s["feasible"]:
+        q = state["quote"]
+        lines += _items_table(q)
+        lines += ["", f"- 기본 금액: {won(q['base'])}", f"- 기간 압축 할증: {won(q['surcharge'])}",
+                  f"- 소계: {won(q['subtotal'])}", f"- 부가세(10%): {won(q['vat'])}", f"- **합계: {won(q['total'])}**"]
+    else:
+        lines += [f"**요청 기간 {req.months}개월로는 실행 불가**: {float(eff['total_mm'])}MM 를 {req.months}개월에 끝내려면 "
+                  f"{s['team']}명이 필요해 최대 투입 {MAX_TEAM}명을 넘습니다.", "", "## 대안"]
+        for o in state["options"]:
+            e = o["estimate"]
+            lines.append(f"- {o['label']}: 공수 {e['total_mm']}MM, 할증 ×{e['schedule']['premium']}, 합계 {won(e['total'])}")
+    r = state["comparison"]["ratios"]
+    basis = "" if s["feasible"] else ", 대안 A 기준"
+    lines += ["", f"## {case.university} 사례 대비 (출처: {CASE_SOURCE}{basis})",
+              f"- 기준: 교수 {case.professors}명, 연구자 {case.researchers}명, {case.months}개월, 전체 범위 → "
+              f"{state['case']['total_mm']}MM, {won(state['case']['total'])}",
+              f"- 교수 ×{r['professors']}, 연구자 ×{r['researchers']} → 공수 ×{r['total_mm']}; "
+              f"기간 ×{r['months']} → 금액 ×{r['total']}", ""]
     sources = sorted({d["source"] for d in state["refs"]})
     lines.append(f"근거 문서: {', '.join(sources)}" if sources else "⚠ 검색된 근거 문서가 없습니다.")
     lines.append(SAMPLE_NOTICE)
@@ -56,21 +115,35 @@ def render_quote(state, store, embedder) -> str:
     return f"견적서 {len(lines)}줄 작성"
 
 
-TOOLS = {"search_refs": search_refs, "estimate": tool_estimate, "render_quote": render_quote}
+TOOLS = {"search_refs": search_refs, "estimate_effort": estimate_effort, "check_schedule": check_schedule,
+         "propose_options": tool_propose_options, "price": price, "compare_case": compare_case,
+         "render_quote": render_quote}
 
 
 class RulePlanner:
-    """상태에서 아직 없는 것을 순서대로 채운다: 근거 → 계산 → 견적서."""
+    """근거 → 공수 → 일정 판단 → (가능: 가격 / 불가: 대안) → 사례 비교 → 견적서."""
 
     def next_action(self, state) -> str | None:
-        for key, tool in (("refs", "search_refs"), ("quote", "estimate"), ("markdown", "render_quote")):
-            if key not in state:
-                return tool
+        if "refs" not in state:
+            return "search_refs"
+        if "effort" not in state:
+            return "estimate_effort"
+        if "schedule" not in state:
+            return "check_schedule"
+        if state["schedule"]["feasible"] and "quote" not in state:
+            return "price"
+        if not state["schedule"]["feasible"] and "options" not in state:
+            return "propose_options"
+        if "comparison" not in state:
+            return "compare_case"
+        if "markdown" not in state:
+            return "render_quote"
         return None
 
 
-def run_agent(req: QuoteRequest, store, embedder, planner=None, max_steps: int = 6) -> dict:
-    result = {"status": "ok", "questions": [], "quote": None, "quote_markdown": "", "sources": [], "trace": []}
+def run_agent(req: QuoteRequest, store, embedder, planner=None, max_steps: int = 10) -> dict:
+    result = {"status": "ok", "questions": [], "quote": None, "options": [], "comparison": None,
+              "schedule": None, "quote_markdown": "", "sources": [], "trace": []}
     questions = validate(req)
     if questions:
         return {**result, "status": "needs_info", "questions": questions}
@@ -79,7 +152,10 @@ def run_agent(req: QuoteRequest, store, embedder, planner=None, max_steps: int =
     for step in range(1, max_steps + 1):
         tool = planner.next_action(state)
         if tool is None:
-            return {**result, "quote": state["quote"], "quote_markdown": state["markdown"],
+            return {**result, "status": "ok" if state["schedule"]["feasible"] else "infeasible",
+                    "quote": state.get("quote"), "options": state.get("options", []),
+                    "comparison": state["comparison"], "schedule": state["schedule"],
+                    "quote_markdown": state["markdown"],
                     "sources": [{"source": d["source"], "chunk_id": d["chunk_id"]} for d in state["refs"]]}
         if tool not in TOOLS:
             return {**result, "status": "error", "questions": [f"알 수 없는 도구: {tool}"]}
