@@ -44,8 +44,8 @@
 
 ## Phase 6: Polish
 
-- [ ] T015 README 에 견적 에이전트 사용법·설계 원칙·한계 추가 in README.md
-- [ ] T016 quickstart.md 시나리오 수동 검증 (uvicorn + 브라우저/curl) in specs/001-pi-quote-agent/quickstart.md
+- [X] T015 README 에 견적 에이전트 사용법·설계 원칙·한계 추가 in README.md
+- [X] T016 quickstart.md 시나리오 수동 검증 (uvicorn + 브라우저/curl) in specs/001-pi-quote-agent/quickstart.md
 
 ## Dependencies
 

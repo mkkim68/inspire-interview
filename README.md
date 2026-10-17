@@ -68,3 +68,42 @@ python -m scripts.eval_retrieval --k 3
 - `/ask` 응답에 토큰 사용량·지연시간 로깅
 - LLM-as-judge 로 답변 품질 1~5점 채점
 - 에이전트화: 검색을 도구로 두고 계산·DB 조회 도구 추가
+
+---
+
+## 대학 연구행정 PI 견적 에이전트 (`/quote`)
+
+서울대 「연구행정시스템 PI」 같은 용역을 다른 대학이 문의하면 견적서를 만들어 주는 기능.
+설계 문서: `specs/001-pi-quote-agent/` (spec-kit: constitution → spec → plan → tasks → implement)
+
+### 사용법
+```bash
+uvicorn app.main:app --reload      # http://localhost:8000/  (입력 폼)
+curl -X POST localhost:8000/quote -H 'content-type: application/json' \
+  -d '{"university":"고려대학교","researchers":2000,"scopes":["funding","roadmap"]}'
+# → 합계 116,600,000원 (소계 106,000,000 + VAT 10,600,000)
+```
+범위: `planning`(연구기획) `award`(과제수주) `funding`(연구비 관리) `outcome`(성과 활용) `roadmap`(차세대 시스템·로드맵).
+공통 과업(현황 분석·To-Be 설계·사업관리)은 항상 포함.
+
+### 동작
+```
+입력 검증 ─(누락)→ needs_info + 질문 목록
+   │
+RulePlanner 가 다음 도구 선택 (최대 6회)
+   ├ search_refs   data/quote 근거 문서를 적재(meta kind=quote_ref)하고 hybrid_search 로 검색
+   ├ estimate      app/quote.py 순수 함수로 공수·금액·VAT·합계 계산
+   └ render_quote  계산 결과를 그대로 견적서(마크다운)로 포맷
+→ quote, quote_markdown, sources, trace
+```
+
+### 설계 원칙
+- **숫자는 코드가 계산**: LLM·렌더러는 숫자를 만들지 않는다. 견적서 숫자 = `estimate()` 결과를 테스트로 확인.
+- **근거 추적**: 항목별 출처, 검색된 근거 청크(`sources`), 도구 호출 기록(`trace`).
+- **문서 ↔ 코드 일치**: 단가표·카탈로그 문서와 계산 상수가 다르면 테스트가 실패.
+- **오프라인 동작**: LLM 키 없이 동작. 플래너는 `next_action(state)` 인터페이스라 LLM tool-use 플래너로 교체 가능.
+
+### 한계
+- 단가·공수·규모 계수는 **샘플 가정값** (서울대 사례는 금액·기간 비공개). 실제 사내 단가표로 교체 필요.
+- 키가 없어 LLM 플래너·자연어 설명은 구현하지 않음 (RulePlanner 로 결정적 실행).
+- RFP 문서(PDF/HWP) 업로드, 견적 저장·이력, PDF 내보내기는 범위 밖.
