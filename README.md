@@ -1,122 +1,109 @@
-# interview-starter
+# 대학 연구행정 PI 견적 에이전트
 
-사내 문서 Q&A를 위한 RAG API 뼈대예요. 면접 과제가 나오면 여기서부터 확장해요.
+인스파이어파트너스가 수주한 서울대학교 「연구행정시스템 PI」 같은 용역을 **다른 대학이 문의하면 견적서를 만들어 주는 에이전틱 웹서비스**예요.
+담당자가 채팅으로 조건을 말하면 조건을 모으고, 부족하면 되묻고, 공수·일정·금액을 계산하고, **근거가 부족하면 스스로 "담당자 검토 필요"를 표시**해요.
+
+> 📄 **해결 과정 기록: [`docs/PROCESS.md`](docs/PROCESS.md)** — 가짜 데이터로 뼈대 → 피드백 → 실제 입찰 데이터 → 대화형 창구까지 설계가 바뀐 이유와 과정
+> 📐 설계 문서(spec-kit): [`specs/001-pi-quote-agent/`](specs/001-pi-quote-agent/) — constitution → spec → plan → tasks
+
+## 실행
+
+```bash
+conda activate interview
+cd ~/Desktop/interview/interview-starter
+pip install -r requirements.txt
+docker compose up -d db          # 없으면 .env 의 DATABASE_URL 을 비워 메모리 저장소로 실행
+python -m pytest -q              # → 64 passed (DB·네트워크·키 없이 동작)
+uvicorn app.main:app --reload    # → http://localhost:8000/
+```
+
+화면 맨 위 채팅창에 이렇게 입력해 보세요.
+
+> 고려대인데 교수 100명, 연구원 500명이고 전체 범위로 두 달 안에 해주세요. 예산은 1억 5천 이하예요. 현장 상주도 필요해요
+
+| 결과 | 내용 |
+|---|---|
+| 견적 | 공수 16.0MM, 8명 투입, 기간 압축 할증 ×1.15 → **합계 214,544,000원** (VAT 포함) |
+| 예산 초과 대안 | 2개월 유지, 연구기획·과제수주·연구비 관리로 축소 → **128,171,967원** |
+| 실제 사례 근거 | 공개 입찰공고 8건: 약식·부분 ISP 0.27~0.9억 / 전사·차세대 ISP 4.5~8.9억 (출처 링크) |
+| ⚠ 담당자 검토 필요 | 보정 확신도 낮음, 연구행정 범위 사례 0건, 근거 그룹 없음, 현장 상주 미반영, 예산 초과 |
+
+기간을 1개월로 바꾸면 "필요 인원 16명 > 최대 8명 → 실행 불가"와 대안(2개월로 늘리기 / 범위 축소)을 보여줘요.
+
+## 동작
+
+```
+[채팅] 자연어 조건 ─ POST /chat
+   │  app/intake.py  규칙 기반 추출(대학 약칭·교수/연구자 수·개월/주/두 달·범위·예산) → 세션에 누적
+   │                 부족하면 되묻기 / 견적식에 없는 요청은 '반영 안 된 조건'으로 보관
+   ▼
+[에이전트] app/agent.py  RulePlanner 가 상태를 보고 다음 도구 선택 (최대 10회, trace 기록)
+   ├ search_refs      근거 문서 검색 (하이브리드 검색, 출처 표시용)
+   ├ estimate_effort  모듈별 공수 = 고정 + 교수 수×a + 연구자 수×b
+   ├ check_schedule   필요 인원 = 공수 ÷ 기간 → 압축 할증 / 실행 불가 판단
+   ├ price            (가능) 공수 × 단가 + 할증 + VAT
+   ├ propose_options  (불가) 대안 A 최소 가능 기간 / 대안 B 기간 유지·범위 축소
+   ├ compare_case     서울대 기준 조건 대비 배율 (설명용 비교, 검증 아님)
+   ├ check_evidence   실제 입찰 사례와 비교 → 확신도·검토 필요 사유
+   └ render_quote     계산 결과를 그대로 견적서로 포맷
+   ▼
+[계산] app/quote.py (공수·일정·금액·예산 대안), app/calibration.py (실제 사례 근거·계수 보정)
+       → 모두 순수 함수. 숫자는 여기서만 만든다.
+```
+
+직접 입력 폼(`POST /quote`)도 그대로 있어요. 범위 키: `planning`(연구기획) `award`(과제수주) `funding`(연구비 관리) `outcome`(성과 활용) `roadmap`(차세대 시스템·로드맵). 공통 과업(현황 분석·To-Be 설계·사업관리)은 항상 포함.
+
+## 기술 선택과 이유
+
+| 선택 | 이유 |
+|---|---|
+| **숫자는 순수 함수가 계산** | 견적은 돈이 걸린 문서라 LLM·검색 결과가 숫자를 만들면 안 돼요. 견적서 숫자 = 계산 결과임을 테스트로 고정했어요. |
+| **에이전트 = 도구 루프 + 상태 기반 플래너** | 실행 가능 여부에 따라 경로가 갈리고(가격 / 대안), 근거가 부족하면 사람에게 넘겨요. LLM 키가 없어 규칙 플래너로 동작하고, `next_action(state)` 만 구현하면 LLM 플래너로 바꿀 수 있어요. |
+| **대화형 접수** | 입찰 담당자마다 조건과 표현이 달라 정해진 폼으로는 받을 수 없어요. 입구만 대화형으로 바꾸고 계산은 재사용했어요. 키가 생기면 `extract()` 만 LLM으로 교체해요. |
+| **실제 입찰 사례로 근거 표시** | 사례 1건(서울대, 금액 비공개)으로는 계수를 정할 수 없어요. 공개 입찰공고 8건을 출처와 함께 붙이고, 계수 보정 파이프라인(최소제곱 + LOO 백테스트)은 데이터가 쌓이면 바로 쓰도록 준비했어요. |
+| **사례는 정형 데이터로** | 금액·기간 같은 표 데이터는 검색(RAG)이 아니라 필터·계산으로 다뤄요. |
+| **하이브리드 검색 (템플릿 재사용)** | 솔직히 지금 규모(근거 문서 3개)에서는 출처 표시용이고 금액에 영향이 없어요. RFP 업로드(정확한 문구·숫자), 사례 수백 건 유사 검색(ISP/ISMP/BPR 약어), 공고번호 조회에서 필요해져요. |
+
+## 데이터
+
+| 파일 | 내용 | 성격 |
+|---|---|---|
+| `data/quote/cases.csv` | 대학 ISP/ISMP 공개 입찰공고 10행(중복 2행 제외 8건) — 금액·기간·범위·출처 URL·확인 수준 | **실제 데이터** |
+| `data/quote/rate_card.md` | 직급별 단가(혼합 1,060만 원/MM) | 샘플 가정값 (참고: KOSA 2026 IT컨설턴트 월평균임금 10,707,960원) |
+| `data/quote/modules.md` | 과업 모듈별 공수 계수, 기간·할증 규칙 | 샘플 가정값 |
+| `data/quote/snu_pi_case.md` | 서울대 PI 사례(공개 기사) + 비교용 기준 조건 | 사실 + 가정값 |
+
+## 한계
+
+- 단가·공수 계수·할증률·서울대 기준 조건은 **샘플 가정값**이에요. 교수 수까지 확인된 실제 사례가 1건뿐이라 계수 보정은 아직 못 했어요(대학알리미 데이터 확보 필요). 그래서 모든 견적이 "담당자 검토 필요"로 나와요.
+- 공고 예산은 실제 낙찰 금액과 다르고, 재가공 사이트 값은 나라장터 원문과 대조가 필요해요.
+- 대화 추출은 규칙 기반이라 표현이 다양하면 놓쳐요(되묻기로 보완). 범위 정정("로드맵은 빼줘")은 미지원, 예산 대안은 최적해가 아니에요.
+- 키워드 검색이 한국어 조사를 처리하지 못해요(Postgres `simple`). 검색이 결과에 영향을 주는 기능을 넣을 때 재현율을 측정하고 n-gram·형태소 분석을 도입할 계획이에요.
+- RFP 문서 업로드, 견적 저장·이력, PDF 내보내기는 범위 밖이에요.
+
+---
+
+## 기반 템플릿: 사내 문서 RAG API
+
+과제 전에 준비한 RAG 뼈대예요. 견적 에이전트는 이 위에 확장했어요(저장소·임베딩·검색 재사용).
 
 ```
 문서(.md/.txt) → 재귀 청킹 → 임베딩(multilingual-e5) → Postgres + pgvector
 질문 → 벡터 검색 + 키워드 검색 → RRF 합치기 → 출처 번호 붙인 프롬프트 → LLM → 인용 검증
 ```
 
-## 처음 한 번 (맥, 터미널에 한 줄씩)
-
 ```bash
-conda activate interview
+python -m scripts.ingest data/docs          # 사내 문서 적재
+python -m scripts.eval_retrieval --k 3      # vector / keyword / hybrid 의 Recall@3, MRR 비교
 ```
-```bash
-cd ~/interview/interview-starter
-```
-```bash
-pip install -r requirements.txt
-```
-```bash
-cp .env.example .env
-```
-그다음 `.env` 파일을 열어 `ANTHROPIC_API_KEY=` 뒤에 키를 붙여 넣어요.
-
-## 매번 실행
-
-```bash
-docker compose up -d db
-```
-```bash
-python -m pytest -q
-```
-→ `11 passed` 가 나오면 정상이에요. 이 테스트는 DB나 키가 없어도 돌아가요.
-
-```bash
-python -m scripts.ingest data/docs
-```
-```bash
-uvicorn app.main:app --reload
-```
-브라우저에서 http://localhost:8000/docs 를 열면 `/ask` 를 바로 눌러볼 수 있어요.
-
-```bash
-python -m scripts.eval_retrieval --k 3
-```
-→ vector / keyword / hybrid 의 Recall@3, MRR 을 한 번에 비교해요.
-
-## Docker가 안 될 때 (비상구)
-
-`.env` 에서 `DATABASE_URL=` 을 비워 두면 메모리 저장소로 똑같이 돌아가요. 키가 없으면 `LLM_PROVIDER=none` 으로 검색 결과에서 발췌한 답을 보여줘요.
-
-## 면접에서 설명할 포인트
+`http://localhost:8000/docs` 에서 `/ingest` `/search` `/ask` 를 눌러볼 수 있어요. 키가 없으면 `.env` 에 `LLM_PROVIDER=none` 으로 검색 결과에서 발췌한 답을 보여줘요.
 
 | 선택 | 이유 |
 |---|---|
 | 재귀 청킹 + content_hash | 문단 단위로 의미를 유지하고, 다시 적재해도 중복이 안 생겨요 (멱등) |
 | multilingual-e5 | 한국어 문서라 다국어 임베딩. 가볍고(384차원) 노트북에서도 빨라요 |
-| pgvector + HNSW | Postgres 하나로 벡터·메타데이터·키워드 검색을 같이 해요 |
+| pgvector | Postgres 하나로 벡터·메타데이터·키워드 검색을 같이 해요 |
 | 하이브리드 + RRF | 의미 검색이 놓치는 에러코드·고유명사를 키워드가 잡아요. 순위만 합쳐서 정규화가 필요 없어요 |
-| 메타데이터 필터 (`where`) | 부서별 권한 필터를 LLM에 넣기 **전에** 적용해요 |
+| 메타데이터 필터 (`where`) | 부서별 권한 필터를 LLM에 넣기 **전에** 적용해요 (견적 근거 문서도 `kind=quote_ref` 로 구분) |
 | 인용 검증 | 답의 [n] 이 실제 검색된 문서인지 코드로 확인해요 (환각 방지) |
 | 저장소 2종 + 가짜 임베딩 | 테스트가 네트워크·DB 없이 돌아요. 실패 원인을 분리하기 쉬워요 |
-
-## 확장 아이디어 (과제에 따라)
-- 리랭커 추가 (상위 20개를 cross-encoder로 재정렬)
-- PDF 로더 (`pypdf`), 표가 많으면 Docling
-- `/ask` 응답에 토큰 사용량·지연시간 로깅
-- LLM-as-judge 로 답변 품질 1~5점 채점
-- 에이전트화: 검색을 도구로 두고 계산·DB 조회 도구 추가
-
----
-
-## 대학 연구행정 PI 견적 에이전트 (`/quote`)
-
-서울대 「연구행정시스템 PI」 같은 용역을 다른 대학이 문의하면 견적서를 만들어 주는 기능.
-설계 문서: `specs/001-pi-quote-agent/` (spec-kit: constitution → spec → plan → tasks → implement)
-
-### 사용법
-```bash
-uvicorn app.main:app --reload      # http://localhost:8000/  (입력 폼)
-curl -X POST localhost:8000/quote -H 'content-type: application/json' \
-  -d '{"university":"고려대학교","professors":100,"researchers":500,"months":2,
-       "scopes":["planning","award","funding","outcome","roadmap"]}'
-# → 16.0MM, 8명 투입, 기간 할증 ×1.15, 합계 214,544,000원 (서울대 기준 대비 ×1.67)
-# months=1 이면 → status "infeasible" + 대안 A(2개월) / 대안 B(범위 축소)
-```
-범위: `planning`(연구기획) `award`(과제수주) `funding`(연구비 관리) `outcome`(성과 활용) `roadmap`(차세대 시스템·로드맵).
-공통 과업(현황 분석·To-Be 설계·사업관리)은 항상 포함. 연구자 수를 비우면 교수 수 × 5로 가정하고 견적서에 표시.
-
-### 동작
-```
-입력(대학명·교수 수·연구자 수(선택)·기간·범위) ─(누락)→ needs_info + 질문 목록
-   │
-RulePlanner 가 상태를 보고 다음 도구 선택 (최대 10회, trace 기록)
-   ├ search_refs      data/quote 근거 문서 적재(meta kind=quote_ref) + hybrid_search
-   ├ estimate_effort  모듈별 공수 = 고정 + 교수 수×a + 연구자 수×b
-   ├ check_schedule   필요 인원 = 공수 ÷ 기간 → 할증 / 실행 불가 판단
-   ├ price            (가능) 공수 × 단가 + 할증 + VAT
-   ├ propose_options  (불가) 대안 A 최소 가능 기간 / 대안 B 기간 유지·범위 축소
-   ├ compare_case     서울대 기준 조건 대비 배율
-   └ render_quote     계산 결과를 그대로 견적서로 포맷
-→ status(ok|infeasible), quote, options, comparison, schedule, sources, trace
-```
-
-### 설계 원칙
-- **숫자는 코드가 계산**: LLM·렌더러는 숫자를 만들지 않는다. 견적서 숫자 = `estimate()` 결과를 테스트로 확인.
-- **근거 추적**: 항목별 출처, 검색된 근거 청크(`sources`), 도구 호출 기록(`trace`).
-- **문서 ↔ 코드 일치**: 단가표·카탈로그 문서와 계산 상수가 다르면 테스트가 실패.
-- **오프라인 동작**: LLM 키 없이 동작. 플래너는 `next_action(state)` 인터페이스라 LLM tool-use 플래너로 교체 가능.
-
-### 대화형 접수 (`POST /chat`, 화면 상단 채팅창)
-자연어로 조건을 말하면 대학명·교수 수·연구자 수·기간·범위를 뽑아 누적하고, 부족하면 되묻고, 다 모이면 견적을 냅니다.
-예산 상한("예산 1.5억 이하")을 말하면 초과 시 예산 안 대안(할증 없애기 / 범위 축소)을 제안합니다.
-견적식에 없는 요청(보고·상주 등)은 '반영 안 된 조건'으로 표시하고 담당자 검토 사유에 넣습니다. 추출은 규칙 기반(키 없이 동작).
-
-### 한계
-- 키워드 검색이 한국어 조사를 처리하지 못함(Postgres 'simple'). RFP 문서 검색 기능을 넣을 때 재현율을 측정하고 떨어지면 n-gram(pg_trgm)·형태소 분석 도입.
-- 대화 추출은 규칙 기반이라 표현이 다양하면 놓침(되묻기로 보완), 범위 정정 미지원.
-- 단가·공수 계수·할증률·서울대 기준 조건은 **샘플 가정값** (서울대 실제 금액·기간 비공개). 실제 수주 데이터로 계수를 보정해야 함.
-- 키가 없어 LLM 플래너·자연어 설명은 구현하지 않음 (RulePlanner 로 결정적 실행).
-- RFP 문서(PDF/HWP) 업로드, 견적 저장·이력, PDF 내보내기는 범위 밖.
