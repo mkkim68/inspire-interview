@@ -14,7 +14,7 @@ conda activate interview
 cd ~/Desktop/interview/interview-starter
 pip install -r requirements.txt
 docker compose up -d db          # 없으면 .env 의 DATABASE_URL 을 비워 메모리 저장소로 실행
-python -m pytest -q              # → 72 passed (DB·네트워크·키 없이 동작)
+python -m pytest -q              # → 81 passed (DB·네트워크·키 없이 동작)
 uvicorn app.main:app --reload    # → http://localhost:8000/
 ```
 
@@ -63,6 +63,8 @@ uvicorn app.main:app --reload    # → http://localhost:8000/
 | ① 유사 사례 | 가상 사례 30건의 사업명·과업 범위 | 사례 기반 금액 범위 → 공식 금액과 ±25% 교차검증 | 정형 데이터(cases.jsonl) + 코드 |
 | ② RFP 조항 (`POST /rfp`, 화면 버튼) | RFP의 사업기간·예산·범위·기타 조항 | 견적 조건 자동 채우기 | 정규식 추출 |
 | ③ 과업 수행 내용 | 과거 제안서 문단 | LLM이 [n] 인용 붙여 서술, 인용 검증 | 쓰지 않음 |
+
+채팅 해석: `EXTRACTOR=llm` 이면 Claude가 "300분 정도", "석 달", "로드맵은 빼줘" 같은 표현을 구조화하고, 코드가 원문 구절과 숫자가 맞는지 검증해요(어긋나면 되묻기, 실패하면 정규식). 계산은 그대로 코드.
 
 LLM: `LLM_PROVIDER=anthropic`(키) / `ollama`(로컬, 키 불필요) / `none`(발췌형). 검색 품질은 `python -m scripts.eval_cases --k 5` (e5 기준 hybrid MRR 0.65 / Recall@5 0.32).
 

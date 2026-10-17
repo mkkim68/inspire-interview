@@ -21,6 +21,8 @@ class Settings:
 
     # 견적 RAG 단계(유사 사례·과업 수행 내용) 사용 여부. 1 이면 켠다 (data/quote/mock 가상 데이터)
     quote_rag: bool = os.getenv("QUOTE_RAG", "0") == "1"
+    # 채팅 해석: "regex"(기본, 키 없이) | "llm"(Claude 구조화 추출 + 원문 근거 검증, 실패 시 정규식)
+    extractor: str = os.getenv("EXTRACTOR", "regex")
     ollama_url: str = os.getenv("OLLAMA_URL", "http://localhost:11434")
 
     chunk_size: int = int(os.getenv("CHUNK_SIZE", "300"))

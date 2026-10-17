@@ -89,7 +89,8 @@ class ChatSession:
         for k in ("university", "professors", "researchers", "months", "budget"):
             if e[k] is not None:
                 self.slots[k] = e[k]
-        self.slots["scopes"] = [s for s in SCOPES if s in self.slots["scopes"] or s in e["scopes"]]
+        removed = set(e.get("remove_scopes", []))   # "로드맵은 빼줘" 같은 정정
+        self.slots["scopes"] = [s for s in SCOPES if (s in self.slots["scopes"] or s in e["scopes"]) and s not in removed]
         self.unhandled += [u for u in e["unhandled"] if u not in self.unhandled]
 
     def request(self) -> QuoteRequest:
@@ -122,18 +123,31 @@ def _won(n: int) -> str:
 
 def reply(session: ChatSession, message: str, store, embedder, prefilled: dict | None = None) -> dict:
     out = {"status": "", "reply": "", "questions": [], "result": None, "budget_options": []}
-    if RESET_RE.search(message):
+    from .understand import understand   # understand 가 intake 를 import 하므로 여기서
+    u = understand(message) if message.strip() else {**extract(""), "intent": "conditions", "remove_scopes": [],
+                                                     "notes": [], "dropped": [], "source": "none"}
+    heard = {k: u[k] for k in ("source", "intent", "notes", "dropped")}
+    out["understood"] = heard
+    if RESET_RE.search(message) or u["intent"] == "reset":
         session.__init__()
         return {**out, "status": "reset", "reply": "처음부터 다시 시작할게요. 대학명, 교수 수, 기간, 필요한 범위를 알려주세요.",
                 "slots": session.slots, "unhandled": []}
-    session.merge(extract(message))
+    session.merge(u)
     if prefilled:              # RFP 조항에서 뽑은 조건
         session.merge(prefilled)
     req = session.request()
     questions = validate(req)
+    head = ""
+    if heard["notes"]:
+        head += "이렇게 이해했어요: " + " / ".join(heard["notes"]) + "\n"
+    if heard["dropped"]:
+        head += "확인이 필요해요 (반영 안 함): " + " / ".join(heard["dropped"]) + "\n"
+        questions = questions + [f"다시 알려주세요 — {d.split(':')[0]}" for d in heard["dropped"]]
+    if heard["intent"] == "question":
+        head += "견적 외 질문은 담당자가 따로 답변드릴게요.\n"
     if questions:
         got = summary(session.slots)
-        text = "견적을 내려면 아래 정보가 더 필요해요.\n" + "\n".join(f"- {q}" for q in questions)
+        text = head + "견적을 내려면 아래 정보가 더 필요해요.\n" + "\n".join(f"- {q}" for q in questions)
         if got:
             text += f"\n(지금까지 받은 조건: {got})"
         return {**out, "status": "needs_info", "reply": text, "questions": questions,
@@ -144,13 +158,14 @@ def reply(session: ChatSession, message: str, store, embedder, prefilled: dict |
         res["review"]["required"] = True
         res["review"]["reasons"].append(f"반영 안 된 요청 조건: {' / '.join(session.unhandled)} — 견적 금액에 포함되지 않음")
     s = res["schedule"]
+    text = head
     if res["status"] == "ok":
         q = res["quote"]
-        text = (f"{req.university} 견적이 나왔어요. 공수 {q['total_mm']}MM, 필요 인원 {s['team']}명, "
+        text += (f"{req.university} 견적이 나왔어요. 공수 {q['total_mm']}MM, 필요 인원 {s['team']}명, "
                 f"기간 할증 ×{s['premium']} → 합계 {_won(q['total'])} (VAT 포함).")
     else:
         opts = " / ".join(f"{o['label']}: {_won(o['estimate']['total'])}" for o in res["options"])
-        text = f"요청 기간 {req.months}개월로는 어려워요 (필요 인원 {s['team']}명 > 최대 8명). 대안: {opts}"
+        text += f"요청 기간 {req.months}개월로는 어려워요 (필요 인원 {s['team']}명 > 최대 8명). 대안: {opts}"
     budget, budget_options = session.slots["budget"], []
     if budget and res["status"] == "ok" and res["quote"]["total"] > budget:
         over = res["quote"]["total"] - budget
