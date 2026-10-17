@@ -201,7 +201,7 @@ $("chatform").addEventListener("submit", async e => {
                                            body: JSON.stringify({session_id: SID, message: msg})})).json();
   bubble("bot", res.reply);
   const sl = res.slots;
-  $("slots").textContent = `대학 ${sl.university || "?"} · 교수 ${sl.professors ?? "?"} · 연구자 ${sl.researchers ?? "(미입력)"} · 기간 ${sl.months ?? "?"}개월 · 범위 ${sl.scopes.join(", ") || "?"}`
+  $("slots").textContent = `대학 ${sl.university || "?"} · 교수 ${sl.professors ?? "?"} · 연구자 ${sl.researchers ?? "(미입력)"} · 기간 ${sl.months ?? "?"}개월 · 범위 ${sl.scopes.join(", ") || "?"}` + (sl.budget ? ` · 예산 ${won(sl.budget)} 이하` : "")
     + (res.unhandled.length ? ` · 반영 안 된 조건: ${res.unhandled.join(" / ")}` : "");
   if (res.result) renderResult(res.result, sl);
   else if (res.status === "reset") $("out").innerHTML = "";

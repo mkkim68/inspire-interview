@@ -3,9 +3,10 @@
 import math
 import re
 from dataclasses import dataclass, field
+from decimal import Decimal
 
 from .agent import run_agent
-from .quote import MODULES, SCOPES, QuoteRequest, validate
+from .quote import MODULES, SCOPES, QuoteRequest, fit_budget, validate
 
 # '최대 8명'의 '최대'처럼 '대'로 끝나지만 대학이 아닌 말
 NOT_UNIV = {"최대", "확대", "기대", "상대", "시대", "절대", "반대", "현대", "극대", "증대", "연대", "세대"}
@@ -41,6 +42,28 @@ def _months(text: str) -> int | None:
     return None
 
 
+BUDGET_RE = re.compile(r"예산[^\d]{0,10}([\d.,]+\s*(?:억|천|만|원)[\d\s.,억천만원]*)")
+
+
+def parse_budget(text: str) -> int | None:
+    """'1.5억', '1억 5천', '8천만원', '9000만 원', '120,000,000원' → 원 (VAT 포함 상한으로 해석)."""
+    m = BUDGET_RE.search(text)
+    if not m:
+        return None
+    s = m.group(1).replace(",", "").replace(" ", "")
+    total = Decimal(0)
+    if u := re.search(r"([\d.]+)억", s):
+        total += Decimal(u.group(1)) * 10**8
+        s = s[u.end():]
+    if u := re.search(r"(\d+)천", s):          # '5천', '8천만' → 천만 단위
+        total += int(u.group(1)) * 10**7
+    elif u := re.search(r"(\d+)만", s):
+        total += int(u.group(1)) * 10**4
+    if total == 0 and (u := re.search(r"(\d+)", s)):
+        total = Decimal(u.group(1))
+    return int(total) or None
+
+
 def _int(m) -> int | None:
     return int(m.group(1).replace(",", "")) if m else None
 
@@ -48,20 +71,22 @@ def _int(m) -> int | None:
 def extract(text: str) -> dict:
     scopes = list(SCOPES) if ALL_SCOPE_RE.search(text) else \
         [key for key, words in SCOPE_WORDS if any(w in text for w in words)]
-    clauses = [c.strip() for c in re.split(r"[,.\n!?]|그리고", text) if c.strip()]
-    return {"university": _university(text), "professors": _int(PROF_RE.search(text)),
+    clauses = [c.strip() for c in re.split(r"[,\n!?]|\.(?!\d)|그리고", text) if c.strip()]
+    budget = parse_budget(text)
+    return {"budget": budget, "university": _university(text), "professors": _int(PROF_RE.search(text)),
             "researchers": _int(RES_RE.search(text)), "months": _months(text), "scopes": scopes,
-            "unhandled": [c for c in clauses if any(h in c for h in UNHANDLED_HINTS)]}
+            "unhandled": [c for c in clauses if any(h in c for h in UNHANDLED_HINTS)
+                          and not (budget and "예산" in c)]}
 
 
 @dataclass
 class ChatSession:
     slots: dict = field(default_factory=lambda: {"university": None, "professors": None, "researchers": None,
-                                                 "months": None, "scopes": []})
+                                                 "months": None, "scopes": [], "budget": None})
     unhandled: list[str] = field(default_factory=list)
 
     def merge(self, e: dict) -> None:
-        for k in ("university", "professors", "researchers", "months"):
+        for k in ("university", "professors", "researchers", "months", "budget"):
             if e[k] is not None:
                 self.slots[k] = e[k]
         self.slots["scopes"] = [s for s in SCOPES if s in self.slots["scopes"] or s in e["scopes"]]
@@ -86,6 +111,8 @@ def summary(slots: dict) -> str:
         parts.append(f"{slots['months']}개월")
     if slots["scopes"]:
         parts.append("범위 " + "·".join(MODULES[s][0] for s in slots["scopes"]))
+    if slots.get("budget"):
+        parts.append(f"예산 {slots['budget']:,}원 이하")
     return ", ".join(parts)
 
 
@@ -94,7 +121,7 @@ def _won(n: int) -> str:
 
 
 def reply(session: ChatSession, message: str, store, embedder) -> dict:
-    out = {"status": "", "reply": "", "questions": [], "result": None}
+    out = {"status": "", "reply": "", "questions": [], "result": None, "budget_options": []}
     if RESET_RE.search(message):
         session.__init__()
         return {**out, "status": "reset", "reply": "처음부터 다시 시작할게요. 대학명, 교수 수, 기간, 필요한 범위를 알려주세요.",
@@ -122,7 +149,16 @@ def reply(session: ChatSession, message: str, store, embedder) -> dict:
     else:
         opts = " / ".join(f"{o['label']}: {_won(o['estimate']['total'])}" for o in res["options"])
         text = f"요청 기간 {req.months}개월로는 어려워요 (필요 인원 {s['team']}명 > 최대 8명). 대안: {opts}"
+    budget, budget_options = session.slots["budget"], []
+    if budget and res["status"] == "ok" and res["quote"]["total"] > budget:
+        over = res["quote"]["total"] - budget
+        budget_options = fit_budget(req, budget)
+        res["review"]["required"] = True
+        res["review"]["reasons"].append(f"예산 상한 {_won(budget)} 초과 ({_won(over)})")
+        text += f"\n예산 {_won(budget)}을 {_won(over)} 넘어요. "
+        text += ("예산 안 대안: " + " / ".join(f"{o['label']}: {_won(o['estimate']['total'])}" for o in budget_options)
+                 if budget_options else "기간·범위를 조정해도 예산 안에 들어가는 대안이 없어요.")
     if res["review"]["required"]:
         text += "\n⚠ 담당자 검토 필요:\n" + "\n".join(f"- {r}" for r in res["review"]["reasons"])
-    return {**out, "status": res["status"], "reply": text, "result": res,
+    return {**out, "status": res["status"], "reply": text, "result": res, "budget_options": budget_options,
             "slots": session.slots, "unhandled": session.unhandled}

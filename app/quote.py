@@ -127,3 +127,26 @@ def compare(est: dict, case_est: dict) -> dict:
     """기준 사례 대비 배율 (소수 2자리)."""
     ratio = lambda k: float(_r(Decimal(str(est[k])) / Decimal(str(case_est[k])), "0.01"))
     return {"ratios": {k: ratio(k) for k in ("professors", "researchers", "total_mm", "months", "total")}}
+
+
+def fit_budget(req: QuoteRequest, budget: int) -> list[dict]:
+    """견적(VAT 포함)이 예산을 넘을 때 예산 안 대안. A: 표준 기간으로 늘려 할증 없애기, B: 기간 유지 + 들어가는 범위만."""
+    options = []
+    _, total_mm, _, _ = effort(req)
+    std_months = math.ceil(total_mm / STD_TEAM)
+    if std_months > req.months:
+        a = replace(req, months=std_months)
+        if (e := estimate(a))["total"] <= budget:
+            options.append({"label": f"기간을 {std_months}개월로 늘려 할증 없애기", "request": asdict(a), "estimate": e})
+    wanted = [s for s in SCOPES if s in req.scopes]
+    keep: list[str] = []
+    for s in wanted:   # 카탈로그 순서로 넣어 보며 예산·인원 안에 들어가는 범위만 남긴다 (최적해 아님)
+        e = estimate(replace(req, scopes=keep + [s]))
+        if e["total"] <= budget and e["schedule"]["feasible"]:
+            keep.append(s)
+    if keep and keep != wanted:
+        b = replace(req, scopes=keep)
+        names = ", ".join(MODULES[s][0] for s in keep)
+        options.append({"label": f"{req.months}개월 유지, 범위를 {names}(으)로 축소", "request": asdict(b),
+                        "estimate": estimate(b)})
+    return options

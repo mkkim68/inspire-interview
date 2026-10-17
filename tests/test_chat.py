@@ -35,8 +35,8 @@ def test_max_is_not_a_university():
 
 def test_extract_nothing():
     e = extract("안녕하세요")
-    assert e == {"university": None, "professors": None, "researchers": None, "months": None, "scopes": [],
-                 "unhandled": []}
+    assert e == {"budget": None, "university": None, "professors": None, "researchers": None, "months": None,
+                 "scopes": [], "unhandled": []}
 
 
 # --- 다턴 대화 (/chat) ---
@@ -76,3 +76,47 @@ def test_reset_starts_over(client):
 def test_sessions_are_separate(client):
     _chat(client, "a", "고려대 교수 100명")
     assert _chat(client, "b", "안녕하세요")["slots"]["university"] is None
+
+
+# --- 예산 상한 ---
+
+from app.intake import parse_budget  # noqa: E402
+from app.quote import QuoteRequest, estimate, fit_budget  # noqa: E402
+
+
+def test_parse_budget_forms():
+    assert parse_budget("예산은 1.5억 이하") == 150_000_000
+    assert parse_budget("예산 1억 5천 정도") == 150_000_000
+    assert parse_budget("예산 8천만원") == 80_000_000
+    assert parse_budget("예산은 9000만 원") == 90_000_000
+    assert parse_budget("예산 120,000,000원") == 120_000_000
+    assert parse_budget("교수 100명") is None
+
+
+def test_budget_is_not_unhandled():
+    e = extract("고려대 예산은 1.5억 이하로 맞춰주세요")
+    assert e["budget"] == 150_000_000 and not e["unhandled"]
+
+
+def test_fit_budget_options_stay_within_budget():
+    req = QuoteRequest(university="고려대학교", professors=100, researchers=500, months=2,
+                       scopes=["planning", "award", "funding", "outcome", "roadmap"])
+    assert estimate(req)["total"] > 150_000_000
+    options = fit_budget(req, 150_000_000)
+    assert options
+    for o in options:
+        e = o["estimate"]
+        assert e["total"] <= 150_000_000 and e["schedule"]["feasible"]
+        assert set(o["request"]["scopes"]) <= set(req.scopes)
+
+
+def test_chat_over_budget_suggests_options(client):
+    res = _chat(client, "t5", "고려대 교수 100명 연구자 500명 전체 범위 2개월, 예산은 1.5억 이하")
+    assert res["status"] == "ok" and res["slots"]["budget"] == 150_000_000
+    assert "예산" in res["reply"] and res["budget_options"]
+    assert any("예산" in r for r in res["result"]["review"]["reasons"])
+
+
+def test_chat_within_budget_no_options(client):
+    res = _chat(client, "t6", "고려대 교수 100명 연구자 500명 전체 범위 2개월, 예산 3억")
+    assert res["status"] == "ok" and res["budget_options"] == []
