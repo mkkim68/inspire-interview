@@ -15,9 +15,13 @@ class Settings:
     embed_model: str = os.getenv("EMBED_MODEL", "intfloat/multilingual-e5-small")
     embed_dim: int = int(os.getenv("EMBED_DIM", "384"))
 
-    # LLM: "anthropic" | "openai" | "none"(키 없이 데모: 검색 결과만으로 답)
+    # LLM: "anthropic" | "openai" | "ollama"(로컬, 키 불필요) | "none"(키 없이 데모: 검색 결과만으로 답)
     llm_provider: str = os.getenv("LLM_PROVIDER", "anthropic")
     llm_model: str = os.getenv("LLM_MODEL", "claude-sonnet-4-6")
+
+    # 견적 RAG 단계(유사 사례·과업 수행 내용) 사용 여부. 1 이면 켠다 (data/quote/mock 가상 데이터)
+    quote_rag: bool = os.getenv("QUOTE_RAG", "0") == "1"
+    ollama_url: str = os.getenv("OLLAMA_URL", "http://localhost:11434")
 
     chunk_size: int = int(os.getenv("CHUNK_SIZE", "300"))
     top_k: int = int(os.getenv("TOP_K", "4"))

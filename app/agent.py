@@ -3,6 +3,7 @@
 from pathlib import Path
 
 from .calibration import evidence
+from . import rag_quote
 from .chunking import make_chunks
 from .config import settings
 from .quote import (CASE_SOURCE, MAX_TEAM, RATE_SOURCE, REFERENCE_CASE, QuoteRequest, compare, effort, estimate,
@@ -85,6 +86,28 @@ def check_evidence(state, store, embedder) -> str:
             f"확신도 {ev['confidence']} → {need}")
 
 
+def retrieve_cases(state, store, embedder) -> str:
+    """① 유사 사례 검색 → 사례 기반 범위 → 공식 금액과 교차검증 (가상 데이터)."""
+    req = state["req"]
+    target = state.get("quote") or state["options"][0]["estimate"]
+    cases = rag_quote.retrieve_similar_cases(req, store, embedder, k=5)
+    rng = rag_quote.case_based_range(cases, req)
+    check = rag_quote.cross_check(target["subtotal"], rng)
+    state["similar"] = {"cases": cases, "range": rng, "check": check}
+    if not check["agree"]:
+        state["evidence"]["review"]["required"] = True
+        state["evidence"]["review"]["reasons"].append(
+            f"유사 사례(가상) 기반 중앙값 {won(rng['median'])} 과 공식 금액 차이 {check['diff']:+.0%} (허용 ±25%)")
+    return f"유사 사례 {len(cases)}건, 사례 기반 중앙값 {won(rng['median'])}, 공식과 차이 {check['diff']:+.0%}"
+
+
+def draft_narrative(state, store, embedder) -> str:
+    """③ 과거 제안서 문단 검색 → [n] 인용 붙은 과업 수행 내용."""
+    state["narrative"] = rag_quote.draft_narrative(state["req"], store, embedder)
+    n = state["narrative"]
+    return f"과업 수행 내용 {n['mode']} 작성, 인용 {len(n['sources'])}개, 인용 검증 {n['check']['reason']}"
+
+
 def _items_table(q: dict) -> list[str]:
     rows = ["| 과업 | 공수(MM) | 금액(원) | 출처 |", "|---|---:|---:|---|"]
     rows += [f"| {i['name']} | {i['mm']} | {i['amount']:,} | {i['source']} |" for i in q["items"]]
@@ -119,6 +142,19 @@ def render_quote(state, store, embedder) -> str:
               f"{state['case']['total_mm']}MM, {won(state['case']['total'])}",
               f"- 교수 ×{r['professors']}, 연구자 ×{r['researchers']} → 공수 ×{r['total_mm']}; "
               f"기간 ×{r['months']} → 금액 ×{r['total']}", ""]
+    if "narrative" in state:
+        n = state["narrative"]
+        lines += ["## 과업 수행 내용 (과거 제안서 검색, 가상 데이터)", n["text"],
+                  "출처: " + ", ".join(f"[{s['n']}] {s['chunk_id']}" for s in n["sources"]), ""]
+    if "similar" in state:
+        sim = state["similar"]
+        r, c = sim["range"], sim["check"]
+        lines += ["## 유사 사례 (하이브리드 검색, 가상 데이터)",
+                  f"- 사례 기반 범위: {won(r['low'])} ~ {won(r['high'])}, 중앙값 {won(r['median'])} ({r['note']})",
+                  f"- 공식 금액과 차이 {c['diff']:+.0%} → " + ("일치 (±25% 이내)" if c["agree"] else "불일치, 검토 필요")]
+        lines += [f"  - {x['case_id']} {x['university']} {x['type']} · 교수 {x['professors']}명 · {x['months']}개월 · "
+                  f"{won(x['price_vat_excl'])} · {x['scope_text']}" for x in sim["cases"]]
+        lines.append("")
     ev = state["evidence"]
     lines += ["## 실제 사례 근거 (공개 입찰공고, 금액은 VAT 제외)"]
     for g in ev["groups"].values():
@@ -140,10 +176,14 @@ def render_quote(state, store, embedder) -> str:
 
 TOOLS = {"search_refs": search_refs, "estimate_effort": estimate_effort, "check_schedule": check_schedule,
          "propose_options": tool_propose_options, "price": price, "compare_case": compare_case,
-         "check_evidence": check_evidence, "render_quote": render_quote}
+         "check_evidence": check_evidence, "retrieve_cases": retrieve_cases, "draft_narrative": draft_narrative,
+         "render_quote": render_quote}
 
 
 class RulePlanner:
+    def __init__(self, use_rag: bool = False):
+        self.use_rag = use_rag   # 켜면 유사 사례 검색 → 과업 수행 내용 단계 추가
+
     """근거 → 공수 → 일정 판단 → (가능: 가격 / 불가: 대안) → 기준 조건 비교 → 실제 사례 근거 → 견적서."""
 
     def next_action(self, state) -> str | None:
@@ -161,6 +201,10 @@ class RulePlanner:
             return "compare_case"
         if "evidence" not in state:
             return "check_evidence"
+        if self.use_rag and "similar" not in state:
+            return "retrieve_cases"
+        if self.use_rag and "narrative" not in state:
+            return "draft_narrative"
         if "markdown" not in state:
             return "render_quote"
         return None
@@ -172,7 +216,7 @@ def run_agent(req: QuoteRequest, store, embedder, planner=None, max_steps: int =
     questions = validate(req)
     if questions:
         return {**result, "status": "needs_info", "questions": questions}
-    planner = planner or RulePlanner()
+    planner = planner or RulePlanner(use_rag=settings.quote_rag)
     state = {"req": req}
     for step in range(1, max_steps + 1):
         tool = planner.next_action(state)
@@ -181,6 +225,7 @@ def run_agent(req: QuoteRequest, store, embedder, planner=None, max_steps: int =
                     "quote": state.get("quote"), "options": state.get("options", []),
                     "comparison": state["comparison"], "schedule": state["schedule"],
                     "evidence": state["evidence"], "review": state["evidence"]["review"],
+                    "similar_cases": state.get("similar"), "narrative": state.get("narrative"),
                     "quote_markdown": state["markdown"],
                     "sources": [{"source": d["source"], "chunk_id": d["chunk_id"]} for d in state["refs"]]}
         if tool not in TOOLS:

@@ -11,11 +11,11 @@ from .quote import MODULES, SCOPES, QuoteRequest, fit_budget, validate
 # '최대 8명'의 '최대'처럼 '대'로 끝나지만 대학이 아닌 말
 NOT_UNIV = {"최대", "확대", "기대", "상대", "시대", "절대", "반대", "현대", "극대", "증대", "연대", "세대"}
 UNIV_RE = re.compile(r"^([가-힣A-Za-z]+?)(대학교|대학|대)(인데|이고|이에요|입니다|에서|의|는|은|이|요|에|로)?$")
-PROF_RE = re.compile(r"교수(?:진|님)?(?:는|가|이|은)?\s*(?:약\s*)?([\d,]+)\s*명")
+PROF_RE = re.compile(r"(?:교수|전임교원)(?:진|님)?(?:는|가|이|은)?\s*(?:약\s*)?([\d,]+)\s*명")
 RES_RE = re.compile(r"연구(?:자|원|인력)(?:는|가|이|은)?\s*(?:약\s*)?([\d,]+)\s*명")
 KOREAN_MONTHS = {"한": 1, "두": 2, "세": 3, "네": 4, "다섯": 5, "여섯": 6, "일곱": 7, "여덟": 8, "아홉": 9, "열": 10}
-SCOPE_WORDS = [("planning", ("연구기획", "기획")), ("award", ("과제수주", "수주")), ("funding", ("연구비",)),
-               ("outcome", ("성과",)), ("roadmap", ("로드맵", "차세대", "시스템 구축"))]
+SCOPE_WORDS = [("planning", ("연구기획", "기획")), ("award", ("과제수주", "수주", "과제 신청", "협약")),
+               ("funding", ("연구비",)), ("outcome", ("성과", "기술이전")), ("roadmap", ("로드맵", "차세대", "시스템 구축"))]
 ALL_SCOPE_RE = re.compile(r"전체|전부|모두|전 범위|다 해")
 # 견적식에 없는 요청 — 버리지 않고 '반영 안 된 조건'으로 모은다
 UNHANDLED_HINTS = ("보고", "상주", "예산", "산출물", "교육", "유지보수", "보안", "감리", "발표", "워크숍")
@@ -120,13 +120,15 @@ def _won(n: int) -> str:
     return f"{n:,}원"
 
 
-def reply(session: ChatSession, message: str, store, embedder) -> dict:
+def reply(session: ChatSession, message: str, store, embedder, prefilled: dict | None = None) -> dict:
     out = {"status": "", "reply": "", "questions": [], "result": None, "budget_options": []}
     if RESET_RE.search(message):
         session.__init__()
         return {**out, "status": "reset", "reply": "처음부터 다시 시작할게요. 대학명, 교수 수, 기간, 필요한 범위를 알려주세요.",
                 "slots": session.slots, "unhandled": []}
     session.merge(extract(message))
+    if prefilled:              # RFP 조항에서 뽑은 조건
+        session.merge(prefilled)
     req = session.request()
     questions = validate(req)
     if questions:

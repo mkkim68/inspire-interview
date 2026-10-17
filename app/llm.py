@@ -19,6 +19,13 @@ def generate(prompt: str, max_tokens: int = 700) -> str:
         resp = client.chat.completions.create(model=settings.llm_model, temperature=0, max_tokens=max_tokens,
                                               messages=[{"role": "user", "content": prompt}])
         return resp.choices[0].message.content or ""
+    if provider == "ollama":   # 로컬 모델 (예: LLM_MODEL=gemma3n:e2b), 키 불필요
+        import httpx
+        r = httpx.post(f"{settings.ollama_url}/api/generate", timeout=120,
+                       json={"model": settings.llm_model, "prompt": prompt, "stream": False,
+                             "options": {"temperature": 0, "num_predict": max_tokens}})
+        r.raise_for_status()
+        return r.json().get("response", "")
     return _offline_answer(prompt)
 
 

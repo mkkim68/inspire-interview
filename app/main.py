@@ -13,6 +13,7 @@ from .config import settings
 from .embeddings import get_embedder
 from .intake import ChatSession, reply
 from .quote import QuoteRequest
+from .rag_quote import rfp_conditions
 from .retrieval import hybrid_search
 from .store import MemoryStore, PgVectorStore
 
@@ -110,6 +111,24 @@ SESSIONS: dict[str, ChatSession] = {}   # 데모용 메모리 세션 (서버 재
 def chat(req: ChatReq):
     session = SESSIONS.setdefault(req.session_id, ChatSession())
     return reply(session, req.message, get_store(), get_embedder())
+
+
+class RfpReq(BaseModel):
+    session_id: str = "default"
+    name: str | None = None        # data/quote/mock/rfps/<name>.md (가상 RFP)
+    text: str | None = None        # 또는 RFP 본문 (## 조항 제목 형식)
+
+
+@app.post("/rfp")
+def rfp(req: RfpReq):
+    """② RFP 조항 검색 → 조건 추출 → 대화 세션에 채우고 견적까지."""
+    if not req.name and not req.text:
+        raise HTTPException(400, "name 또는 text 가 필요합니다")
+    rid = req.name or f"upload-{req.session_id}"
+    found = rfp_conditions(rid, get_store(), get_embedder(), text=req.text)
+    session = SESSIONS.setdefault(req.session_id, ChatSession())
+    out = reply(session, "", get_store(), get_embedder(), prefilled=found["conditions"])
+    return {**out, "rfp_clauses": found["clauses"]}
 
 
 @app.get("/", response_class=HTMLResponse)
