@@ -80,3 +80,17 @@ def test_agent_without_rag_is_unchanged():
     store, emb = _fresh()
     res = run_agent(REQ, store, emb)
     assert "retrieve_cases" not in [t["tool"] for t in res["trace"]]
+
+
+# --- 긴 조항 청킹 (e5 512토큰 한계, 뒷부분 손실 방지) ---
+
+def test_long_clause_is_split_with_heading_and_nothing_lost():
+    from app.rag_quote import _sections
+    body = " ".join(f"세부 과업 {i}번은 연구비 정산 절차를 점검한다." for i in range(60)) + " 마지막 조건은 보안서약서 제출이다."
+    chunks = _sections(f"# 가상 RFP\n\n## 4. 과업 범위\n{body}\n\n## 5. 기타\n보고 월 1회.", "rfp_long", {"kind": "rfp"})
+    scope = [c for c in chunks if "과업 범위" in c["content"]]
+    assert len(scope) > 1                                       # 500자 넘는 조항은 나뉜다
+    assert all(c["content"].startswith("# 4. 과업 범위") for c in scope)   # 조각마다 조항 제목
+    assert all(len(c["content"]) <= 520 for c in scope)
+    assert any("보안서약서" in c["content"] for c in scope)       # 뒷부분이 버려지지 않는다
+    assert len({c["chunk_id"] for c in chunks}) == len(chunks)   # ID 중복 없음 (RRF 덮어쓰기 방지)
